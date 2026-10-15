@@ -5,6 +5,14 @@ import pg from 'pg';
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const q = (text, params) => pool.query(text, params);
 
+// Bo loc dong SKU-order HOP LE. Truoc day viet trong server.js (VALID_ROW) va mot ban JS
+// trong aggregate() cua sync.js; den khi sync-creator.js cung can hoi "san pham nay co don
+// chua" thi thanh ba ban. Dat o day -- module la duong di chung cua moi entry point --
+// de sua mot cho la cac cho doc DB doi theo. Ban JS trong sync.js van rieng, test-raw.mjs
+// la thu bat duoc khi hai ben lech nhau.
+export const VALID_ROW =
+  `settle_status is distinct from 'INELIGIBLE' and fully_return is distinct from 'Yes'`;
+
 // --- Nhip tim cho sync_runs ---
 // Tien trinh bi kill (SIGKILL, mat dien, dong may) khong chay duoc handler nao, nen khong
 // the tu danh dau la hong. Hau qua: dong sync_runs ket 'running' vinh vien va dashboard

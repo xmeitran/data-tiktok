@@ -21,7 +21,9 @@ export function sign(path, query, body, secret) {
   return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 }
 
-export async function call(path, { method = 'GET', query = {}, body, accessToken, shopCipher } = {}) {
+async function callOnce(path, { method = 'GET', query = {}, body, accessToken, shopCipher } = {}) {
+  // timestamp VA sign phai tinh lai o moi lan thu: chu ky om ca timestamp, dung lai chu ky cu
+  // thi lan thu lai se bi tu choi vi lech gio.
   const q = { app_key: KEY(), timestamp: Math.floor(Date.now() / 1000), ...query };
   if (shopCipher) q.shop_cipher = shopCipher;
   const payload = body ? JSON.stringify(body) : undefined;
@@ -35,9 +37,36 @@ export async function call(path, { method = 'GET', query = {}, body, accessToken
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.code) {
     // 105005 = thieu scope: kiem tra ca scope cua app lan granted_scopes cua token.
-    throw new Error(`TikTok ${path} -> ${json.code ?? res.status}: ${json.message ?? res.statusText}`);
+    const err = new Error(`TikTok ${path} -> ${json.code ?? res.status}: ${json.message ?? res.statusText}`);
+    err.httpStatus = res.status;
+    err.apiCode = json.code ?? null;
+    throw err;
   }
   return json.data ?? json;
+}
+
+// Thu lai nhung loi TU HET, dung thu lai loi do minh sai. Loi mang (fetch nem, khong co
+// httpStatus), 5xx va 429 la tam thoi; 4xx nhu thieu scope hay sai chu ky thi thu lai bao nhieu
+// lan cung v.
+export function retryable(err) {
+  if (err?.httpStatus === undefined) return true;          // fetch nem -> loi mang
+  return err.httpStatus >= 500 || err.httpStatus === 429;
+}
+
+// Khong co cho nay, MOT lan mang chop tat la mat ca ngay do -- va trong lan backfill 287 ngay
+// that su da mat 255 ngay lien tiep vi dung ly do do.
+export const RETRY_MS = [1000, 3000, 9000];
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+export async function call(path, opts = {}) {
+  for (let i = 0; ; i++) {
+    try {
+      return await callOnce(path, opts);
+    } catch (err) {
+      if (i >= RETRY_MS.length || !retryable(err)) throw err;
+      await sleep(RETRY_MS[i]);
+    }
+  }
 }
 
 async function tokenCall(path, params) {

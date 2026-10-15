@@ -316,7 +316,12 @@ export async function runSync({ days = 7, skipExisting = false } = {}) {
         for (const wi of w) warnings.push(`${dayStr}: ${wi}`);
         await writeRaw(dayStr, rows);
         written += await writeDay(dayStr, byCreator);
-      } catch (e) { errors.push(`${dayStr}: ${e.message}`); }
+      } catch (e) {
+        // "fetch failed" tran trui khong noi len dieu gi. Loi mang that su nam o e.cause
+        // (ECONNRESET, ENOTFOUND...) -- thieu no thi lan sau lai phai doan.
+        const why = e.cause?.code ?? e.cause?.message;
+        errors.push(`${dayStr}: ${e.message}${why ? ` (${why})` : ''}`);
+      }
       // Dap nhip sau MOI ngay, ke ca ngay loi: job van song, chi la ngay do hong.
       await beat(runId);
     }
