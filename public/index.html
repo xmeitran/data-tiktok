@@ -8,13 +8,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="tokens.css">
+<!-- blocks.css: lop role cho UNG DUNG cua kit UpBase (extension chinh thuc).
+     Khong dung thang token marketing cho mot bang so lieu dac. -->
+<link rel="stylesheet" href="blocks.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="upbase-blocks" data-block-density="compact">
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
 <div class="app">
   <aside class="side">
     <div class="side-brand">TikTok Partner<span class="dot">.</span><br><small>Metrics cho MCN</small></div>
-    <nav id="nav">
+    <nav id="nav" aria-label="Khu vực">
       <button data-tab="hieu-suat" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h5v8H3zM10 3h5v18h-5zM17 9h5v12h-5z"/></svg><span>Hiệu suất</span></button>
       <button data-tab="creator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0z"/></svg><span>Creator</span></button>
       <button data-tab="san-pham"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6.5v11L12 22l9-4.5v-11L12 2zm0 2.3 6.4 3.2L12 10.7 5.6 7.5 12 4.3zM5 9.3l6 3v7.1l-6-3V9.3zm8 10.1v-7.1l6-3v7.1l-6 3z"/></svg><span>Sản phẩm</span></button>
@@ -24,7 +28,7 @@
     <div class="side-foot" id="side-foot"></div>
   </aside>
 
-  <main>
+  <main id="main" tabindex="-1">
     <div class="topbar">
       <div class="crumb" id="crumb">Hiệu suất</div>
       <div class="seg period" id="period" role="group" aria-label="Khoảng thời gian">
@@ -33,38 +37,16 @@
         <button data-days="30">30 ngày</button>
         <button data-days="">Tất cả</button>
       </div>
-      <span class="fresh" id="fresh"></span>
+      <span class="fresh" id="fresh" role="status" aria-live="polite"></span>
     </div>
 
     <div class="content">
-      <section id="tab-hieu-suat">
-        <div class="banner" id="sync-banner"></div>
+      <section id="tab-hieu-suat" role="tabpanel" aria-label="Hiệu suất">
+        <div class="sec-head"><h1>Hiệu suất</h1></div>
+        <div class="banner" id="sync-banner" role="status" aria-live="polite"></div>
 
-        <div class="kpis" id="kpis"></div>
-
-        <div class="card chart-card">
-          <div class="chart-head">
-            <h2>Xu hướng</h2>
-            <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
-          </div>
-          <div id="chart"></div>
-        </div>
-
-        <div class="sec-head"><h2>Chi tiết theo ngày</h2></div>
-        <div class="card table-card"><table id="t-daily"></table></div>
-
-        <div id="snap-wrap" class="hide">
-          <div class="sec-head"><h2>Ảnh chụp từ uỷ quyền creator</h2></div>
-          <p class="sub">KHÔNG phải số liệu theo kỳ: API creator không trả về thời điểm tạo,
-             nên đây là trạng thái tại <b id="snap-day">—</b>, không cộng dồn nhiều ngày được.</p>
-          <div class="kpis" id="kpis-snap"></div>
-        </div>
-
-        <div class="sec-head"><h2>Chưa lấy được</h2></div>
-        <p class="sub">Chỉ số đã định nghĩa nhưng API không trả về. Mỗi ô nói rõ vì sao.</p>
-        <div class="kpis" id="kpis-na"></div>
-
-        <div class="sec-head"><h2>Kéo dữ liệu</h2></div>
+        <details class="xep keo">
+          <summary><h2>Kéo dữ liệu</h2></summary>
         <div class="card">
           <p class="sub">Mỗi ngày dữ liệu tốn khoảng 83 lượt gọi API (~30 giây). Ngày hôm nay
              không kéo được — chỉ kéo những ngày đã khép lại.</p>
@@ -84,11 +66,41 @@
           </div>
           <div id="link-out"></div>
         </div>
+        </details>
+        <div class="kpis kpis-chinh" id="kpis"></div>
+        <div class="kpis kpis-phu" id="kpis-phu"></div>
+
+        <div class="card chart-card">
+          <div class="chart-head">
+            <h2>Xu hướng</h2>
+            <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
+          </div>
+          <div id="chart"></div>
+        </div>
+
+        <div class="sec-head"><h2>Chi tiết theo ngày</h2></div>
+        <div class="card table-card"><table id="t-daily"></table></div>
+
+        <div id="snap-wrap" class="hide">
+          <div class="sec-head"><h2>Ảnh chụp từ uỷ quyền creator</h2></div>
+          <p class="sub">KHÔNG phải số liệu theo kỳ: API creator không trả về thời điểm tạo,
+             nên đây là trạng thái tại <b id="snap-day">—</b>, không cộng dồn nhiều ngày được.</p>
+          <div class="kpis" id="kpis-snap"></div>
+        </div>
+
+        <!-- Gap lai: 5 chi so KHONG co du lieu truoc day chiem 416px giua tab chinh.
+             Van giu nguyen noi dung va ly do, chi la khong bat nguoi doc cuon qua moi lan. -->
+        <details class="xep">
+          <summary><h2>Chưa lấy được</h2><span class="dem" id="na-count"></span></summary>
+          <p class="sub">Chỉ số đã định nghĩa nhưng API không trả về. Mỗi ô nói rõ vì sao.</p>
+          <div class="kpis" id="kpis-na"></div>
+        </details>
+
       </section>
 
-      <section id="tab-creator" class="hide">
+      <section id="tab-creator" class="hide" role="tabpanel" aria-label="Creator">
         <div class="sec-head">
-          <h2>Creator</h2>
+          <h1>Creator</h1>
           <button class="btn ghost sm" id="btn-export">Export CSV</button>
         </div>
         <p class="sub">Creator có phát sinh đơn trong kỳ đang chọn — không phải toàn bộ creator
@@ -99,14 +111,19 @@
             <input type="search" id="c-q" placeholder="Tìm theo username…" aria-label="Tìm creator" autocomplete="off">
             <kbd>/</kbd>
           </div>
+          <div class="seg" id="c-view" role="group" aria-label="Số cột hiển thị">
+            <button data-view="gon" aria-pressed="true">Gọn</button>
+            <button data-view="day-du" aria-pressed="false">Đầy đủ</button>
+          </div>
           <span class="count" id="c-count" aria-live="polite"></span>
         </div>
         <div id="creator-drill"></div>
         <div class="card table-card"><table id="t-creators"></table></div>
+        <div id="c-more" class="more"></div>
       </section>
 
-      <section id="tab-san-pham" class="hide">
-        <div class="sec-head"><h2>Theo loại nội dung</h2></div>
+      <section id="tab-san-pham" class="hide" role="tabpanel" aria-label="Sản phẩm">
+        <div class="sec-head"><h1>Sản phẩm &amp; shop</h1></div>
         <p class="sub">Đơn được quy cho định dạng nội dung sinh ra nó. Số này đọc từ bảng dòng
            thô, đã loại đơn huỷ/hoàn — nên cộng lại đúng bằng GMV thực, không phải GMV gộp.</p>
         <div id="p-share"></div>
@@ -129,10 +146,11 @@
           <span class="count" id="p-count" aria-live="polite"></span>
         </div>
         <div class="card table-card"><table id="t-products"></table></div>
+        <div id="p-more" class="more"></div>
       </section>
 
-      <section id="tab-chi-so" class="hide">
-        <div class="sec-head"><h2>Chỉ số</h2></div>
+      <section id="tab-chi-so" class="hide" role="tabpanel" aria-label="Chỉ số">
+        <div class="sec-head"><h1>Chỉ số</h1></div>
         <p class="sub">Mỗi chỉ số: ý nghĩa, công thức dashboard tự tính, và trường API của TikTok
            giữ nguyên văn kèm bản dịch.</p>
         <div class="toolbar">
@@ -154,8 +172,8 @@
         <div id="wiki"></div>
       </section>
 
-      <section id="tab-he-thong" class="hide">
-        <div class="sec-head"><h2>Hệ thống</h2></div>
+      <section id="tab-he-thong" class="hide" role="tabpanel" aria-label="Hệ thống">
+        <div class="sec-head"><h1>Hệ thống</h1></div>
         <p class="sub">Uỷ quyền, category asset và lịch sử kéo dữ liệu.</p>
         <div id="system"></div>
       </section>

@@ -35,11 +35,15 @@ const vnd = new Intl.NumberFormat('vi-VN');
 const compact = new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 });
 const fmt = (v, unit) =>
   unit === '%' ? `${Number(v).toFixed(1)}%` : vnd.format(Math.round(Number(v) || 0));
+// Intl vi-VN rut gon thanh "N" / "Tr" / "T" -- "9,6 T" (ty) va "666,2 Tr" (trieu) chi
+// khac mot chu cai ma khac nhau 1000 lan, doc luot la nham. Viet thang ra cho ro.
+const DON_VI = { N: 'ngh', Tr: 'tr', T: 'tỷ' };
 // KPI dung ban rut gon de khong tran the; so day du nam o thuoc tinh title.
 const fmtKpi = (v, unit) => {
   const n = Number(v) || 0;
   if (unit === '%') return `${n.toFixed(1)}%`;
-  return Math.abs(n) >= 1e6 ? compact.format(n) : vnd.format(Math.round(n));
+  if (Math.abs(n) < 1e6) return vnd.format(Math.round(n));
+  return compact.format(n).replace(/\s*(N|Tr|T)$/, (_, k) => ' ' + DON_VI[k]);
 };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const d2 = (s) => s ? `${String(s).slice(8, 10)}/${String(s).slice(5, 7)}` : '—';
@@ -73,7 +77,7 @@ function totals(days) {
 // Nhan ngan cho tieu de bang. Nhan day du trong registry ("Creator xuat hien trong du lieu")
 // lam bang phinh ra phai cuon ngang; ten day du van con o tooltip va tab Metric.
 const SHORT = {
-  creators_seen: 'Creator', creators_active: 'Creator có đơn hợp lệ', gmv: 'GMV', net_gmv: 'GMV thực',
+  creators_seen: 'Creator', creators_active: 'Creator có đơn', gmv: 'GMV gộp', net_gmv: 'GMV thực',
   orders: 'Đơn hợp lệ', items_sold: 'SP bán', aov: 'AOV', est_commission: 'Hoa hồng',
   commission_base: 'Gốc HH', commission_rate: '% hoa hồng',
   refund_amount: 'Hoàn/huỷ', refund_orders: 'Đơn huỷ', refund_rate: '% hoàn (tiền)',
@@ -81,20 +85,43 @@ const SHORT = {
 const shortLabel = (k, m) => SHORT[k] ?? m?.label ?? k;
 const byKey = () => Object.fromEntries(METRICS.map(m => [m.key, m]));
 
+// Khung xuong luc dang tai: giu nguyen bo cuc nen trang khong nhay khi du lieu ve.
+// `aria-busy` de trinh doc man hinh biet day la cho doi, khong phai noi dung that.
+const skelRows = (n = 6) =>
+  `<tbody aria-busy="true">${Array.from({ length: n }, () =>
+    '<tr><td><div class="skel skel-row"></div></td></tr>').join('')}</tbody>`;
+const skelKpis = (n = 6) =>
+  Array.from({ length: n }, () =>
+    '<div class="card kpi" aria-busy="true"><div class="skel skel-row"></div></div>').join('');
+
+function showLoading() {
+  $('#kpis').innerHTML = skelKpis();
+  $('#t-daily').innerHTML = skelRows(5);
+  $('#t-creators').innerHTML = skelRows(8);
+  $('#t-products').innerHTML = skelRows(8);
+}
+
 // --- tabs ---
 $('#nav').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#nav').children)
     x === b ? x.setAttribute('aria-current', 'page') : x.removeAttribute('aria-current');
+  // Dua tieu diem vao vung noi dung: nguoi dung ban phim doi tab xong phai o dung
+  // cho moi, khong phai Tab lai tu dau thanh dieu huong.
+  $('#main').focus({ preventScroll: true });
   for (const x of document.querySelectorAll('.content section'))
     x.classList.toggle('hide', x.id !== `tab-${b.dataset.tab}`);
   $('#crumb').textContent = b.textContent;
 });
 
 // ---------- Tong quan ----------
-const KPI_ORDER = ['creators_seen', 'creators_active', 'gmv', 'net_gmv', 'orders', 'items_sold',
-                   'aov', 'est_commission', 'commission_base', 'commission_rate',
-                   'refund_amount', 'refund_orders', 'refund_rate'];
+// 13 the cao bang nhau, cung co chu, cung sac do = khong the biet nhin cai nao truoc.
+// Chia hai muc: 4 con so tra loi "ky nay the nao", con lai la chi tiet de doi chieu.
+// Thu tu trong moi muc la thu tu doc, khong phai thu tu trong registry.
+const KPI_CHINH = ['net_gmv', 'orders', 'est_commission', 'creators_active'];
+const KPI_PHU   = ['gmv', 'refund_amount', 'refund_orders', 'refund_rate',
+                   'aov', 'items_sold', 'commission_base', 'commission_rate', 'creators_seen'];
+const KPI_ORDER = [...KPI_CHINH, ...KPI_PHU];
 
 // Metric tu uy quyen CREATOR. CO Y khong cho vao KPI_ORDER/SUM_KEYS: API creator khong tra
 // ve thoi diem tao nen moi lan sync la mot ANH CHUP trang thai hien tai. Cong 7 ngay lai
@@ -105,16 +132,21 @@ const lastSnapshot = () =>
 
 // So sanh ngay moi nhat voi ngay lien truoc. Khong co ngay truoc thi khong hien gi,
 // hon la hien "+0%" gia.
-function delta(key, cur) {
+function delta(key, cur, unit) {
   const prev = prevPeriod();
   // Chua du du lieu cho ky truoc thi noi thang, dung de trong khien nguoi doc tuong khong doi.
   if (!prev.length) return '<span class="delta flat" title="Chưa đủ dữ liệu cho kỳ trước đó">—</span>';
   const was = totals(prev)[key];
   if (!was) return '';
-  const pct = ((cur - was) / Math.abs(was)) * 100;
-  if (!Number.isFinite(pct)) return '';
-  return `<span class="delta ${pct >= 0 ? 'up' : 'down'}"
-    title="Kỳ trước: ${fmt(was)}">${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%</span>`;
+  // Metric da la TY LE thi "giam 1,1%" khong doc ra nghia: 1,1% cua 9,3% hay 1,1 diem?
+  // Chenh lech diem phan tram la cach duy nhat khong mo ho, va cung la cach nguoi lam
+  // so lieu doc. Metric thuong thi van la % thay doi.
+  const laTyLe = unit === '%';
+  const d = laTyLe ? cur - was : ((cur - was) / Math.abs(was)) * 100;
+  if (!Number.isFinite(d)) return '';
+  const nhan = laTyLe ? `${Math.abs(d).toFixed(1)} điểm` : `${Math.abs(d).toFixed(1)}%`;
+  return `<span class="delta ${d >= 0 ? 'up' : 'down'}"
+    title="Kỳ trước: ${fmt(was, unit)}">${d >= 0 ? '▲' : '▼'} ${nhan}</span>`;
 }
 
 // Sparkline: duong xu huong trong KY dang chon, ve tu du lieu da co san.
@@ -145,18 +177,27 @@ function renderKpis() {
   const seen = CREATORS.filter(c => Number(c.days) > 0).length;
   const active = CREATORS.filter(c => Number(c.orders) > 0).length;
 
-  $('#kpis').innerHTML = KPI_ORDER.filter(k => m[k]?.available && !m[k].live).map(k => {
+  // Nhan NGAN, dung chung voi tieu de bang (SHORT). Truoc day the KPI dung nhan day du
+  // dang cau ("Ty le hoan/huy (theo gia tri)") nen xuong 2 dong va day moi the len 163px,
+  // trong khi bang ngay duoi goi chinh no la "% hoan" -- mot thu, hai ten.
+  const the = (k, chinh) => {
     const v = k === 'creators_seen' ? seen : k === 'creators_active' ? active : (t[k] ?? 0);
-    return `<div class="card kpi">
-      <div class="kpi-l">${esc(m[k].label)}
-        <span class="info" tabindex="0" title="${esc(m[k].definition)}&#10;&#10;Công thức: ${esc(m[k].formula)}">ⓘ</span>
+    const unit = m[k].unit;
+    const laCreator = k.startsWith('creators_');
+    // Don vi KHONG lap lai khi con so da mang no: "9.3%" roi "%" nua thanh "1.1% %".
+    const donVi = unit === '%' ? '' : `<span class="muted">${esc(unit)}</span>`;
+    return `<div class="card kpi${chinh ? ' chinh' : ''}">
+      <div class="kpi-l">${esc(shortLabel(k, m[k]))}
+        <span class="info" tabindex="0" title="${esc(m[k].label)}&#10;&#10;${esc(m[k].definition)}&#10;&#10;Công thức: ${esc(m[k].formula)}">ⓘ</span>
       </div>
-      <div class="n" title="${fmt(v, m[k].unit)}">${fmtKpi(v, m[k].unit)}</div>
-      <div class="kpi-f">${k.startsWith('creators_') ? '' : delta(k, v)}
-        <span class="muted">${esc(m[k].unit)}</span></div>
-      ${k.startsWith('creators_') ? '' : spark(k, days)}
+      <div class="n" title="${fmt(v, unit)}">${fmtKpi(v, unit)}</div>
+      <div class="kpi-f">${laCreator ? '' : delta(k, v, unit)}${donVi}</div>
+      ${chinh && !laCreator ? spark(k, days) : ''}
     </div>`;
-  }).join('');
+  };
+  const co = (k) => m[k]?.available && !m[k].live;
+  $('#kpis').innerHTML = KPI_CHINH.filter(co).map(k => the(k, true)).join('');
+  $('#kpis-phu').innerHTML = KPI_PHU.filter(co).map(k => the(k, false)).join('');
 
   // Anh chup: an han khoi khi chua creator nao uy quyen, thay vi hien 4 the 0 vinh vien.
   const snap = lastSnapshot();
@@ -173,7 +214,9 @@ function renderKpis() {
     </div>`).join('');
   }
 
-  $('#kpis-na').innerHTML = METRICS.filter(x => !x.available).map(x => `
+  const chuaKeo = METRICS.filter(x => !x.available);
+  $('#na-count').textContent = `${chuaKeo.length} chỉ số`;
+  $('#kpis-na').innerHTML = chuaKeo.map(x => `
     <div class="card kpi na">
       <div class="kpi-l">${esc(x.label)}</div>
       <div class="n">—</div>
@@ -221,7 +264,7 @@ async function loadSummary() {
   $('#sync-banner').innerHTML = r
     ? `<span class="dot-${r.status === 'ok' ? 'ok' : 'err'}"></span>
        Lần kéo gần nhất: <b>${dt(r.started_at)}</b> · ${esc(r.status)} · ${r.rows_written} dòng
-       ${r.note ? `· <span class="warn-text">${esc(r.note)}</span>` : ''}`
+       ${r.note ? `· <span class="warn-text" title="${esc(r.note)}">${esc(r.note)}</span>` : ''}`
     : '<span class="dot-err"></span> Chưa kéo dữ liệu lần nào.';
   renderKpis(); renderChart(); renderDaily();
 }
@@ -230,6 +273,15 @@ async function loadSummary() {
 let SORT = { key: 'net_gmv', dir: -1 };
 let ALERT_COUNTS = { stopped: 0, drop: 0, refund: 0, rise: 0 };
 let ALERT_FILTER = '';            // '' = tat ca; hoac stopped|drop|refund|rise
+// 16 cot thi phai cuon ngang moi lan muon xem % hoa hong, va cuon la mat ten creator.
+// Bo "Gon" la nhung cot du de QUYET DINH; bo day du van con nguyen cho ai can doi chieu.
+// MANG chu khong phai Set: day la thu tu DOC (ai -> ban duoc bao nhieu -> bao nhieu don
+// -> moi don bao nhieu -> minh an bao nhieu -> co van de gi khong), khong phai thu tu khai bao.
+const CCOLS_GON = ['username', 'net_gmv', 'orders', 'aov', 'est_commission', 'refund_rate'];
+let CVIEW = 'gon';                // gon | day-du
+// 114 dong render het = bang cao 7.611px. Khong ai cuon toi cuoi; ai can thi bam xem them.
+const CLIMIT = 30;
+let CSHOW_ALL = false;
 // `delta: true` = cot co so sanh voi ky truoc ngay duoi con so.
 const CCOLS = [
   { key: 'username',        label: 'Creator',      num: false },
@@ -250,6 +302,10 @@ const CCOLS = [
 ];
 // Ty le khong cong duoc -> dong tong de trong, thay vi cong bay ra so vo nghia.
 const SUMMABLE = new Set(['days','gmv','net_gmv','refund_amount','refund_orders','orders','items_sold','commission_base','est_commission']);
+
+const ccols = () => CVIEW === 'gon'
+  ? CCOLS_GON.map(k => CCOLS.find(c => c.key === k)).filter(Boolean)
+  : CCOLS;
 
 function creatorRows() {
   const kw = $('#c-q').value.trim().toLowerCase();
@@ -311,9 +367,12 @@ function renderCreators() {
   $('#c-count').textContent = ALERT_FILTER
     ? `${rows.length} creator ${ALERT_CHIPS.find(c => c.code === ALERT_FILTER).label.toLowerCase()}`
     : `${rows.length}/${CREATORS.length} creator`;
-  const head = `<th class="rank">#</th>` + CCOLS.map(c => {
+  const cols = ccols();
+  const head = `<th class="rank">#</th>` + cols.map(c => {
     const on = SORT.key === c.key;
-    return `<th class="${c.num ? 'num ' : ''}sortable" data-sort="${c.key}"
+    // `who` tren CA th va td, neu khong phan ghim o header va o than bang lech nhau.
+    const cls = `${c.num ? 'num ' : ''}${c.key === 'username' ? 'who ' : ''}sortable`;
+    return `<th class="${cls}" data-sort="${c.key}"
       aria-sort="${on ? (SORT.dir === 1 ? 'ascending' : 'descending') : 'none'}">${esc(c.label)}<span
       class="arrow">${on ? (SORT.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
   }).join('');
@@ -333,23 +392,34 @@ function renderCreators() {
     : c.num ? `<td class="num">${fmt(r[c.key], c.unit)}${c.delta ? cellDelta(r, c.key) : ''}</td>`
     : `<td>${d2(r[c.key])}</td>`;
   const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
+  // Tong van tinh tren TOAN BO dong khop bo loc, khong phai phan dang hien -- neu khong
+  // "Tong 114 creator" se doi theo viec bam "xem them", doc ra con so vo nghia.
+  const hien = CSHOW_ALL ? rows : rows.slice(0, CLIMIT);
 
   $('#t-creators').innerHTML = `
     <thead><tr>${head}</tr></thead>
-    <tbody>${rows.length ? rows.map((r, i) => {
+    <tbody>${hien.length ? hien.map((r, i) => {
       const w = worst(r.alerts);
       // Xep hang theo CHINH cot dang sort, nen doi cot sort la thu tu # doi theo.
       return `<tr class="${w ? 'row-' + w.level : ''}"><td class="rank">${i + 1}</td>${
-        CCOLS.map(c => cell(r, c)).join('')}</tr>`;
+        cols.map(c => cell(r, c)).join('')}</tr>`;
     }).join('')
-      : `<tr><td colspan="${CCOLS.length + 1}" class="empty">${
+      : `<tr><td colspan="${cols.length + 1}" class="empty">${
           ALERT_FILTER ? 'Không creator nào trong nhóm này.'
                        : `Không có creator nào khớp “${esc($('#c-q').value)}”.`}</td></tr>`}</tbody>
-    ${rows.length ? `<tfoot><tr><td></td>${CCOLS.map((c, i) =>
+    ${hien.length ? `<tfoot><tr><td></td>${cols.map((c, i) =>
       i === 0 ? `<td>Tổng ${rows.length} creator</td>`
       : SUMMABLE.has(c.key) ? `<td class="num">${fmt(sum(c.key))}</td>` : '<td></td>').join('')}</tr></tfoot>` : ''}`;
+
+  const con = rows.length - hien.length;
+  $('#c-more').innerHTML = con > 0
+    ? `<button class="btn ghost sm" id="btn-more">Xem thêm ${con} creator</button>`
+    : (CSHOW_ALL && rows.length > CLIMIT
+        ? `<button class="btn ghost sm" id="btn-less">Thu gọn về ${CLIMIT} dòng</button>` : '');
 }
 
+// CSV luon xuat DU 16 cot va DU dong: che do "Gon" va gioi han 30 dong la de DOC
+// tren man hinh, khong phai de cat bot du lieu mang di.
 function exportCsv() {
   const rows = creatorRows();
   const head = CCOLS.map(c => c.label).join(',');
@@ -367,6 +437,8 @@ function exportCsv() {
 // 'GMV' nhu truoc thi hai tab hien hai so khac nhau duoi cung mot ten.
 let PRODUCTS = { products: [], shops: [], byContentType: [], coverage: null };
 let PVIEW = 'products';
+// Cung ly do nhu bang creator: 200 dong render het = 8.080px, khong ai cuon toi cuoi.
+let PSHOW_ALL = false;
 let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } };
 
 const PCOLS = [
@@ -477,17 +549,26 @@ function renderProducts() {
     ? `<td class="num">${fmt(r[c.key], c.unit)}</td>`
     : `<td class="${c.wide ? 'wide' : 'clip'}" title="${esc(r[c.key])}">${esc(r[c.key] ?? '—')}</td>`;
   const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
+  // Tong van tinh tren TOAN BO dong khop bo loc, khong phai phan dang hien.
+  const hien = PSHOW_ALL ? rows : rows.slice(0, CLIMIT);
 
   $('#t-products').innerHTML = `
     <thead><tr>${head}</tr></thead>
-    <tbody>${rows.length ? rows.map(r => `<tr>${cols.map(c => cell(r, c)).join('')}</tr>`).join('')
+    <tbody>${hien.length ? hien.map(r => `<tr>${cols.map(c => cell(r, c)).join('')}</tr>`).join('')
       : `<tr><td colspan="${cols.length}" class="empty">${all
         ? `Không có gì khớp “${esc($('#p-q').value)}”.`
         // Ly do day du da nam o khoi the ben tren; nhac lai nguyen van o day chi lam on.
         : 'Không có dòng thô nào trong kỳ này — xem giải thích ở trên.'}</td></tr>`}</tbody>
-    ${rows.length ? `<tfoot><tr>${cols.map((c, i) =>
+    ${hien.length ? `<tfoot><tr>${cols.map((c, i) =>
       i === 0 ? `<td>Tổng ${rows.length}</td>`
       : PSUMMABLE.has(c.key) ? `<td class="num">${fmt(sum(c.key))}</td>` : '<td></td>').join('')}</tr></tfoot>` : ''}`;
+
+  const con = rows.length - hien.length;
+  const donVi = PVIEW === 'products' ? 'sản phẩm' : 'shop';
+  $('#p-more').innerHTML = con > 0
+    ? `<button class="btn ghost sm" id="btn-pmore">Xem thêm ${con} ${donVi}</button>`
+    : (PSHOW_ALL && rows.length > CLIMIT
+        ? `<button class="btn ghost sm" id="btn-pless">Thu gọn về ${CLIMIT} dòng</button>` : '');
 }
 
 async function loadProducts() {
@@ -552,22 +633,34 @@ function renderSystem() {
       </dl></div>`;
   }).join('');
 
-  const assets = `<div class="card table-card"><table>
+  // 20/21 dong noi CUNG MOT cau ("16032001 / 16032015"). Liet ke het ra chi de nguoi doc
+  // cuon qua 20 dong giong nhau; cai duy nhat dang dung thi lan mat giua chung.
+  const dung = categoryAssets.filter(a => a.cipher === activeCipher);
+  const khongDung = categoryAssets.filter(a => a.cipher !== activeCipher);
+  const bangAsset = (list) => `<table>
     <thead><tr><th>Category asset</th><th>Thị trường</th><th>Cipher</th><th>Dùng được</th></tr></thead>
-    <tbody>${categoryAssets.map(a => {
+    <tbody>${list.map(a => {
       const on = a.cipher === activeCipher;
       return `<tr><td>${esc(a.category_name)}</td><td>${esc(a.target_market)}</td>
         <td><code>${esc(a.cipher.slice(0, 22))}…</code></td>
         <td>${on ? '<span class="tag ok">đang dùng</span>'
                  : '<span class="tag off">16032001 / 16032015</span>'}</td></tr>`;
-    }).join('')}</tbody></table></div>`;
+    }).join('')}</tbody></table>`;
+  const assets = `<div class="card table-card">${bangAsset(dung)}</div>
+    ${khongDung.length ? `<details class="xep">
+      <summary><h2>Không gọi được API</h2><span class="dem">${khongDung.length} asset</span></summary>
+      <p class="sub">Tất cả đều trả <code>16032001</code> (invalid main_account) hoặc
+         <code>16032015</code> (permission denied) — cùng một lý do.</p>
+      <div class="card table-card">${bangAsset(khongDung)}</div>
+    </details>` : ''}`;
 
   const runs = `<div class="card table-card"><table>
     <thead><tr><th>#</th><th>Bắt đầu</th><th>Xong</th><th>Trạng thái</th><th class="num">Dòng ghi</th><th>Ghi chú</th></tr></thead>
     <tbody>${syncRuns.map(r => `<tr><td>${r.id}</td><td>${dt(r.started_at)}</td>
       <td>${dt(r.finished_at)}</td>
       <td><span class="tag ${r.status === 'ok' ? 'ok' : r.status === 'running' ? 'grp' : 'warn'}">${esc(r.status)}</span></td>
-      <td class="num">${fmt(r.rows_written)}</td><td>${esc(r.note) || '—'}</td></tr>`).join('')}</tbody></table></div>`;
+      <td class="num">${fmt(r.rows_written)}</td>
+      <td class="note" title="${esc(r.note)}">${esc(r.note) || '—'}</td></tr>`).join('')}</tbody></table></div>`;
 
   const am = SYSTEM.authMetrics ?? {};
   const m = byKey();
@@ -586,25 +679,25 @@ function renderSystem() {
   }).join('');
 
   $('#system').innerHTML = `
-    <div class="sec-head"><h3>Uỷ quyền</h3></div>
+    <div class="sec-head"><h2>Uỷ quyền</h2></div>
     <div class="kpis">${authCards}</div>
-    <div class="sec-head"><h3>Dữ liệu đang có</h3></div>
+    <div class="sec-head"><h2>Dữ liệu đang có</h2></div>
     <div class="kpis">
       <div class="card kpi"><div class="kpi-l">Khoảng ngày</div><div class="n sm">${esc(coverage.from_day ?? '—')} → ${esc(coverage.to_day ?? '—')}</div></div>
       <div class="card kpi"><div class="kpi-l">Số ngày</div><div class="n">${coverage.days ?? 0}</div></div>
       <div class="card kpi"><div class="kpi-l">Dòng metric</div><div class="n">${fmt(coverage.rows ?? 0)}</div></div>
       <div class="card kpi"><div class="kpi-l">Creator</div><div class="n">${CREATORS.length}</div></div>
     </div>
-    <div class="sec-head"><h3>Chi tiết uỷ quyền</h3></div>
+    <div class="sec-head"><h2>Chi tiết uỷ quyền</h2></div>
     <div class="two-col">${auth}</div>
-    <div class="sec-head"><h3>Category asset (${categoryAssets.length})</h3>
+    <div class="sec-head"><h2>Category asset (${categoryAssets.length})</h2>
       ${DOCS?.api?.category_assets?.docUrl ? `<a class="doclink" target="_blank" rel="noopener"
         href="${esc(DOCS.api.category_assets.docUrl)}"
         title="${esc(DOCS.api.category_assets.method)} ${esc(DOCS.api.category_assets.path)}"
         >${esc(DOCS.api.category_assets.title)} ↗</a>` : ''}</div>
     <p class="sub">Chỉ cipher của <b>Creator Management</b> gọi được <code>cap_order/search</code>; 20 cái còn lại trả lỗi.</p>
     ${assets}
-    <div class="sec-head"><h3>Lịch sử kéo dữ liệu</h3></div>
+    <div class="sec-head"><h2>Lịch sử kéo dữ liệu</h2></div>
     ${runs}`;
 }
 
@@ -707,7 +800,7 @@ function fieldRows(m, kw) {
 function metricDetail(m, kw) {
   return `<article class="mx-detail-in">
     <div class="mx-head">
-      <h3>${hl(m.label, kw)}</h3>
+      <h2>${hl(m.label, kw)}</h2>
       <div class="mx-chips">
         <code>${hl(m.key, kw)}</code>
         ${status(m)}
@@ -723,16 +816,16 @@ function metricDetail(m, kw) {
       <div><dt>Pipeline</dt><dd>${m.available ? 'đã kéo' : 'chưa kéo'}</dd></div>
     </dl>
 
-    <h4>Công thức <span class="by ours">dashboard tự tính</span></h4>
+    <h3>Công thức <span class="by ours">dashboard tự tính</span></h3>
     <p><code class="formula">${hl(m.formula, kw)}</code></p>
 
-    <h4>Trường API <span class="by tiktok">nguyên văn TikTok + bản dịch</span>${apiDocLink(m)}</h4>
+    <h3>Trường API <span class="by tiktok">nguyên văn TikTok + bản dịch</span>${apiDocLink(m)}</h3>
     ${fieldRows(m, kw)}
 
-    <h4>Cần lưu ý</h4>
+    <h3>Cần lưu ý</h3>
     <p class="pit">${hl(m.pitfalls, kw)}</p>
 
-    <h4>Nguồn</h4>
+    <h3>Nguồn</h3>
     <p class="muted">${hl(m.source, kw)}</p>
   </article>`;
 }
@@ -818,18 +911,33 @@ $('#period').addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#period').children) x.setAttribute('aria-pressed', String(x === b));
   PERIOD = b.dataset.days ? Number(b.dataset.days) : null;
+  showLoading();
   // Ca hai bang deu phai doi theo cung ky, neu khong tab no noi ky khac tab kia.
   await Promise.all([loadCreators(), loadProducts()]);
   renderKpis(); renderChart(); renderDaily();
 });
-$('#c-q').addEventListener('input', renderCreators);
+$('#c-q').addEventListener('input', () => { CSHOW_ALL = false; renderCreators(); });
 $('#creator-drill').addEventListener('click', (e) => {
   if (e.target.closest('#drill-close')) { DRILL = null; $('#creator-drill').innerHTML = ''; }
+});
+
+$('#c-more').addEventListener('click', (e) => {
+  if (e.target.closest('#btn-more')) { CSHOW_ALL = true; renderCreators(); }
+  if (e.target.closest('#btn-less')) { CSHOW_ALL = false; renderCreators();
+    $('#t-creators').scrollIntoView({ block: 'nearest' }); }
+});
+
+$('#c-view').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  for (const x of $('#c-view').children) x.setAttribute('aria-pressed', String(x === b));
+  CVIEW = b.dataset.view;
+  renderCreators();
 });
 
 $('#c-alerts').addEventListener('click', (e) => {
   const b = e.target.closest('.chip-f'); if (!b) return;
   ALERT_FILTER = b.dataset.code;
+  CSHOW_ALL = false;
   renderCreators();
 });
 
@@ -849,13 +957,20 @@ $('#t-creators').addEventListener('click', (e) => {
   renderCreators();
 });
 
+$('#p-more').addEventListener('click', (e) => {
+  if (e.target.closest('#btn-pmore')) { PSHOW_ALL = true; renderProducts(); }
+  if (e.target.closest('#btn-pless')) { PSHOW_ALL = false; renderProducts();
+    $('#t-products').scrollIntoView({ block: 'nearest' }); }
+});
+
 $('#btn-export-p').addEventListener('click', exportProductsCsv);
-$('#p-q').addEventListener('input', renderProducts);
+$('#p-q').addEventListener('input', () => { PSHOW_ALL = false; renderProducts(); });
 
 $('#p-view').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#p-view').children) x.setAttribute('aria-pressed', String(x === b));
   PVIEW = b.dataset.view;
+  PSHOW_ALL = false;
   renderProducts();
 });
 
@@ -900,9 +1015,12 @@ document.addEventListener('keydown', (e) => {
     [...new Set(METRICS.map(m => m.group))].map(g => `<option>${esc(g)}</option>`).join(''));
   // Bieu do chi chon duoc metric da noi API va khong phai dem creator.
   $('#c-metric').insertAdjacentHTML('beforeend', METRICS
-    .filter(m => m.available && !m.key.startsWith('creators_'))
+    // `live` = trang thai HIEN TAI (token con bao nhieu ngay, bao nhieu scope...), khong
+    // nam trong metric_values theo ngay -> chon vao chi ra bieu do trong.
+    .filter(m => m.available && !m.live && !m.key.startsWith('creators_'))
     .map(m => `<option value="${esc(m.key)}"${m.key === 'gmv' ? ' selected' : ''}>${esc(m.label)}</option>`).join(''));
   renderWiki();
+  showLoading();
   await Promise.all([loadCreators(), loadSystem(), loadProducts()]);
   await loadSummary();   // can CREATORS truoc de KPI dem dung so creator trong ky
   } catch (e) { reportError('init', e); }

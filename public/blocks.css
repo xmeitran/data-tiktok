@@ -1,0 +1,174 @@
+/* New block integration layer. No global theme or official geometry reset. */
+/* tokens.css duoc nap rieng trong index.html, khong @import de tranh tai hai lan. */
+
+.upbase-blocks {
+  --up-block-surface: var(--color--neutral--50);
+  --up-block-surface-muted: var(--color--primary--50);
+  --up-block-foreground: var(--color--neutral--800);
+  --up-block-muted-foreground: var(--color--neutral--600);
+  --up-block-border: var(--color--neutral--200);
+  --up-block-sidebar-surface: var(--color--neutral--50);
+  --up-block-sidebar-foreground: var(--up-color-ink);
+  --up-block-sidebar-accent: var(--color--primary--50);
+  --up-block-sidebar-accent-foreground: var(--color--primary--800);
+  --up-block-sidebar-primary: var(--color--primary--500);
+  --up-block-sidebar-primary-foreground: var(--color--neutral--50);
+  --up-block-header-surface: var(--color--neutral--50);
+  --up-block-auth-surface: var(--color--neutral--50);
+  --up-block-focus: var(--color--primary--700);
+  --up-block-font-family: var(--up-font-sans);
+  --up-block-content-max-width: var(--up-container-max);
+  --up-block-card-radius: var(--up-radius-control);
+  --up-block-control-radius: var(--up-radius-control);
+  --up-block-font-size: 14px;
+  --up-block-line-height: 1.6;
+  --up-block-title-size: 24px;
+  --up-block-label-size: 12px;
+  --up-block-sidebar-width: 16rem;
+  --up-block-sidebar-width-mobile: 18rem;
+  --up-block-sidebar-width-icon: 3rem;
+  --up-block-sidebar-padding: 8px;
+  --up-block-sidebar-gap: 8px;
+  --up-block-sidebar-row-height: 32px;
+  --up-block-header-height: 64px;
+  --up-block-header-height-mobile: 56px;
+  --up-block-header-padding-inline: 24px;
+  --up-block-header-gap: 16px;
+  --up-block-content-gutter: 24px;
+  --up-block-content-padding-block: 24px;
+  --up-block-section-gap: 24px;
+  --up-block-card-padding: 24px;
+  --up-block-card-gap: 24px;
+  --up-block-card-border-width: 1px;
+  --up-block-auth-form-width: 400px;
+  --up-block-auth-form-wide: 480px;
+  --up-block-auth-page-padding: 24px;
+  --up-block-auth-form-gap: 24px;
+  --up-block-field-gap: 8px;
+  --up-block-control-min-height: 44px;
+  --up-block-focus-width: 2px;
+  --up-block-transition-duration: 160ms;
+  --up-block-transition-ease: ease-out;
+  --sidebar: var(--up-block-sidebar-surface);
+  --sidebar-foreground: var(--up-block-sidebar-foreground);
+  --sidebar-primary: var(--up-block-sidebar-primary);
+  --sidebar-primary-foreground: var(--up-block-sidebar-primary-foreground);
+  --sidebar-accent: var(--up-block-sidebar-accent);
+  --sidebar-accent-foreground: var(--up-block-sidebar-accent-foreground);
+  --sidebar-border: var(--up-block-border);
+  --sidebar-ring: var(--up-block-focus);
+  background-color: var(--up-block-surface);
+  color: var(--up-block-foreground);
+  font-family: var(--up-block-font-family);
+  font-variant-numeric: tabular-nums;
+}
+
+.upbase-blocks[data-block-density="compact"] {
+  --up-block-sidebar-padding: 4px;
+  --up-block-sidebar-gap: 4px;
+  --up-block-sidebar-row-height: 28px;
+  --up-block-header-height: 56px;
+  --up-block-header-padding-inline: 16px;
+  --up-block-header-gap: 12px;
+  --up-block-content-gutter: 16px;
+  --up-block-content-padding-block: 16px;
+  --up-block-section-gap: 16px;
+  --up-block-card-padding: 16px;
+  --up-block-card-gap: 16px;
+  --up-block-auth-form-gap: 16px;
+ }
+
+/* New compositions opt into these helpers; unmodified official variants do not. */
+.upbase-blocks .up-block-header {
+  display: flex;
+  align-items: center;
+  min-height: var(--up-block-header-height);
+  gap: var(--up-block-header-gap);
+  padding-inline: var(--up-block-header-padding-inline);
+  background: var(--up-block-header-surface);
+  border-bottom: 1px solid var(--up-block-border);
+}
+.upbase-blocks .up-block-content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--up-block-content-max-width);
+  margin-inline: auto;
+  padding: var(--up-block-content-padding-block) var(--up-block-content-gutter);
+  font-size: var(--up-block-font-size);
+  line-height: var(--up-block-line-height);
+}
+.upbase-blocks .up-block-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--up-block-section-gap);
+}
+.upbase-blocks .up-block-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--up-block-card-gap);
+  padding: var(--up-block-card-padding);
+  border: var(--up-block-card-border-width) solid var(--up-block-border);
+  border-radius: var(--up-block-card-radius);
+  background: var(--up-block-surface);
+}
+.upbase-blocks .up-block-auth {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: var(--up-block-auth-page-padding);
+  background: var(--up-block-auth-surface);
+}
+.upbase-blocks .up-block-auth-form {
+  width: 100%;
+  max-width: var(--up-block-auth-form-width);
+  margin-inline: auto;
+}
+.upbase-blocks .up-block-auth-form[data-block-form="wide"] { max-width: var(--up-block-auth-form-wide); }
+.upbase-blocks .up-block-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--up-block-auth-form-gap);
+}
+.upbase-blocks .up-block-form-stack [data-slot="field"] { gap: var(--up-block-field-gap); }
+.upbase-blocks .up-block-form-stack [data-slot="label"],
+.upbase-blocks .up-block-form-stack [data-slot="field-label"] { font-size: var(--up-block-label-size); }
+.upbase-blocks .up-block-form-stack [data-slot="input"],
+.upbase-blocks .up-block-form-stack [data-slot="button"],
+.upbase-blocks .up-block-form-stack [data-slot="select-trigger"] { min-height: var(--up-block-control-min-height); border-radius: var(--up-block-control-radius); }
+.upbase-blocks .up-block-form-stack h1,
+.upbase-blocks .up-block-form-stack h2 { font-size: var(--up-block-title-size); }
+
+/* Compact is an explicit application-density override, not captured UpBase CSS. */
+.upbase-blocks[data-block-density="compact"] [data-slot="card"] {
+  padding-block: var(--up-block-card-padding);
+  gap: var(--up-block-card-gap);
+}
+.upbase-blocks[data-block-density="compact"] [data-slot="card-header"],
+.upbase-blocks[data-block-density="compact"] [data-slot="card-content"],
+.upbase-blocks[data-block-density="compact"] [data-slot="card-footer"] { padding-inline: var(--up-block-card-padding); }
+.upbase-blocks[data-block-density="compact"] .up-block-form-stack [data-slot="field-group"] { gap: var(--up-block-auth-form-gap); }
+@media (min-width: 768px) {
+  .upbase-blocks[data-block-density="compact"] [data-slot="sidebar"]:not([data-collapsible="icon"]) [data-slot="sidebar-header"],
+  .upbase-blocks[data-block-density="compact"] [data-slot="sidebar"]:not([data-collapsible="icon"]) [data-slot="sidebar-footer"] { padding: var(--up-block-sidebar-padding); gap: var(--up-block-sidebar-gap); }
+  .upbase-blocks[data-block-density="compact"] [data-slot="sidebar"]:not([data-collapsible="icon"]) [data-slot="sidebar-content"],
+  .upbase-blocks[data-block-density="compact"] [data-slot="sidebar"]:not([data-collapsible="icon"]) [data-slot="sidebar-menu"] { gap: var(--up-block-sidebar-gap); }
+  .upbase-blocks[data-block-density="compact"] [data-slot="sidebar"]:not([data-collapsible="icon"]) [data-slot="sidebar-menu-button"][data-size="default"] { height: var(--up-block-sidebar-row-height); }
+}
+@media (max-width: 767px) {
+  .upbase-blocks {
+    --up-block-header-height: var(--up-block-header-height-mobile);
+    --up-block-header-padding-inline: 16px;
+    --up-block-content-gutter: 16px;
+    --up-block-content-padding-block: 16px;
+    --up-block-auth-page-padding: 16px;
+  }
+}
+.upbase-blocks .up-block-focus:focus-visible {
+  outline: var(--up-block-focus-width) solid var(--up-block-focus);
+  outline-offset: 3px;
+}
+.upbase-blocks .up-block-transition { transition: background-color var(--up-block-transition-duration) var(--up-block-transition-ease); }
+@media (prefers-reduced-motion: reduce) {
+  .upbase-blocks { --up-block-transition-duration: 0ms; }
+  .upbase-blocks .up-block-transition { transition: none; animation: none; }
+}
