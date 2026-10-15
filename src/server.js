@@ -3,8 +3,8 @@ import express from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { q, reapStale } from './db.js';
-import { METRICS } from './metrics.js';
+import { q, reapStale, VALID_ROW, ORDER_DAY } from './db.js';
+import { METRICS, ratios, RATIO_KEYS } from './metrics.js';
 import { API, REQUEST, FIELDS, CATEGORY_ASSET_FIELDS,
          CREATOR_API, CREATOR_FIELDS } from './tiktok-fields.js';
 import { exchangeCode, authorizeUrl, creatorAuthorizeUrl, isCreatorToken,
@@ -38,7 +38,18 @@ async function saveState(state, role, label) {
     [state, role, label, STATE_TTL[role]]);
 }
 
-// Tra ve dong state va XOA luon: dung mot lan that su, khong phai chi kiem roi de day.
+// Xem state co hop le khong, KHONG xoa. Dung de tu choi som truoc khi goi TikTok,
+// ma chua tieu state -- vi loi mang o buoc doi token khong duoc lam chet mot link
+// creator da gui cho nguoi khac.
+async function peekState(state) {
+  const { rows } = await q(
+    `select role, label from auth_states where state = $1 and expires_at > now()`, [state]);
+  return rows[0] ?? null;
+}
+
+// Tra ve dong state va XOA luon. `delete ... returning` la ATOMIC: hai callback chay
+// song song thi dung mot ben nhan duoc dong, ben kia nhan null. Goi SAU khi da doi
+// token thanh cong, nen state chi chay khi uy quyen that su hoan tat.
 async function takeState(state) {
   const { rows } = await q(
     `delete from auth_states where state = $1 and expires_at > now() returning role, label`, [state]);
@@ -105,14 +116,23 @@ app.get('/api/tiktok/callback', async (req, res) => {
   // Partner: docs noi `state` duoc khuyen khich chu KHONG bat buoc, nen link copy thang
   // tu Partner Center (khong kem state) van phai dung duoc. Co state thi bat buoc khop.
   // Creator thi nguoc lai: state BAT BUOC, kiem o duoi sau khi biet day la token creator.
+  // Kiem TRUOC (chua xoa) de tu choi som; chi TIEU state sau khi doi token xong.
+  // Truoc day xoa ngay o day: mot loi mang nhat thoi o /token/get la link creator chet
+  // han, phai sinh link moi va gui lai cho nguoi ta.
   let entry = null;
   if (state) {
-    entry = await takeState(String(state));
+    entry = await peekState(String(state));
     if (!entry) return res.status(400).send('state khong hop le, da het han hoac da dung roi.');
   }
 
   try {
     const t = await exchangeCode(code);
+
+    // Doi token xong moi tieu state. Thua race (hai callback cung state) thi dung lai:
+    // ben kia da hoan tat uy quyen roi.
+    if (state && !await takeState(String(state))) {
+      return res.status(400).send('state da duoc dung boi mot yeu cau khac.');
+    }
 
     // Nhan ra luong creator bang user_type cua chinh token (1 = creator), khong doan theo
     // state -- de callback creator di qua link nao cung vao dung nhanh. `entry.role` chi
@@ -207,25 +227,22 @@ app.get('/api/summary', async (_req, res, next) => {
       q(`select * from sync_runs order by id desc limit 1`),
     ]);
     const byStatus = Object.fromEntries(auth.rows.map(r => [r.status, r.n]));
+    // Neo vao NGAY CO DON moi nhat, khong phai max(period_start) cua ca bang: metric
+    // anh chup cua creator sync ghi vao hom nay va se lam khoi nay rong sach gmv/orders.
     const latest = await q(
       `select metric_key, sum(value) total from metric_values
-       where period_start = (select max(period_start) from metric_values)
+       where period_start = ${ORDER_DAY}
        group by metric_key`
     );
     // Ty le khong cong duoc: bo cac metric % ra khoi tong roi tinh lai tu cac metric goc.
-    const RATIO = new Set(['aov', 'commission_rate', 'refund_rate']);
+    const RATIO = new Set(RATIO_KEYS);
     const t = Object.fromEntries(
       latest.rows.filter(r => !RATIO.has(r.metric_key)).map(r => [r.metric_key, Number(r.total)]));
-    const latestOut = {
-      ...t,
-      aov: t.orders ? t.gmv / t.orders : 0,
-      commission_rate: t.gmv ? (t.est_commission / t.gmv) * 100 : 0,
-      refund_rate: t.gmv ? ((t.gmv - t.net_gmv) / t.gmv) * 100 : 0,
-    };
+    const latestOut = { ...t, ...ratios(t) };
     const creators = await q(`select count(*)::int n from creators`);
     const fresh = await q(
-      `select max(period_start)::text newest,
-              (now() at time zone 'UTC')::date::text today from metric_values`);
+      `select ${ORDER_DAY}::text newest,
+              (now() at time zone 'UTC')::date::text today`);
     res.json({
       freshness: fresh.rows[0],
       authorizations: byStatus,
@@ -244,21 +261,17 @@ app.get('/api/daily', async (_req, res, next) => {
     const { rows } = await q(
       `select period_start::text as "day", metric_key, sum(value)::float as total
        from metric_values
-       where metric_key not in ('aov','commission_rate','refund_rate')
+       where metric_key <> all($1::text[])
        group by period_start, metric_key
-       order by period_start`
+       order by period_start`,
+      [RATIO_KEYS]
     );
     const byDay = new Map();
     for (const r of rows) {
       if (!byDay.has(r.day)) byDay.set(r.day, { day: r.day });
       byDay.get(r.day)[r.metric_key] = r.total;
     }
-    res.json([...byDay.values()].map(d => ({
-      ...d,
-      aov: (d.orders + d.refund_orders) ? d.gmv / (d.orders + d.refund_orders) : 0,
-      commission_rate: d.commission_base ? (d.est_commission / d.commission_base) * 100 : 0,
-      refund_rate: d.gmv ? (d.refund_amount / d.gmv) * 100 : 0,
-    })));
+    res.json([...byDay.values()].map(d => ({ ...d, ...ratios(d) })));
   } catch (e) { next(e); }
 });
 
@@ -282,21 +295,17 @@ app.get('/api/creators', async (req, res, next) => {
               coalesce(sum(v.value) filter (where v.metric_key='refund_amount'),0)::float refund_amount,
               coalesce(sum(v.value) filter (where v.metric_key='refund_orders'),0)::float refund_orders
        from creators c left join metric_values v on v.creator_username = c.username
-         and ($1::int is null or v.period_start > (select max(period_start) from metric_values) - $1::int)
+         and ($1::int is null or v.period_start > ${ORDER_DAY} - $1::int)
        group by c.username, c.first_seen, c.last_seen`,
       [days]
     );
-    res.json(rows.map(r => ({
-      ...r,
-      aov: (r.orders + r.refund_orders) ? r.gmv / (r.orders + r.refund_orders) : 0,
-      commission_rate: r.commission_base ? (r.est_commission / r.commission_base) * 100 : 0,
-      refund_rate: r.gmv ? (r.refund_amount / r.gmv) * 100 : 0,
-    })).sort((a, b) => b.net_gmv - a.net_gmv));
+    res.json(rows.map(r => ({ ...r, ...ratios(r) }))
+      .sort((a, b) => b.net_gmv - a.net_gmv));
   } catch (e) { next(e); }
 });
 
-// Trang thai he thong: uy quyen partner, cipher, lich su sync. Nhung thu nay truoc gio
-// chi nam trong DB, khong ai nhin thay tu giao dien.
+// Dien bien theo ngay cua MOT creator. Truoc day khong co duong nao nhin mot creator
+// theo thoi gian, chi co tong cong ca ky.
 app.get('/api/creator-daily', async (req, res, next) => {
   try {
     const { rows } = await q(
@@ -314,13 +323,14 @@ app.get('/api/creator-daily', async (req, res, next) => {
 
 // Du lieu theo SAN PHAM / SHOP / loai noi dung. Doc tu bang tho sku_orders -- metric_values
 // chi co chieu creator nen khong dien ta duoc nhung chieu nay.
-// Loc don huy GIONG HET aggregate() trong sync.js, neu khong hai cho se ra hai con so khac nhau.
-const VALID_ROW = `settle_status is distinct from 'INELIGIBLE' and fully_return is distinct from 'Yes'`;
-
+// VALID_ROW den tu db.js: cung mot bo loc voi moi cho doc DB khac (truoc day file nay giu
+// mot ban copy rieng, nen sua mot ben la hai ben lech nhau).
 app.get('/api/products', async (req, res, next) => {
   try {
     const days = Number(req.query.days) || null;
-    const limit = Math.min(Number(req.query.limit) || 50, 500);
+    // Tham so hoa + ep vao [1, 500]: truoc day noi suy thang vao SQL, nen ?limit=-1
+    // thanh `limit -1` va tra 500 thay vi tu choi tu te.
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 500));
     const window = `($1::int is null or "day" > (select max("day") from sku_orders) - $1::int)`;
 
     const [products, shops, content] = await Promise.all([
@@ -331,9 +341,12 @@ app.get('/api/products', async (req, res, next) => {
                 sum(est_commission)::float est_commission,
                 sum(commission_base)::float commission_base,
                 count(distinct creator_username)::int creators,
-                round(avg(std_rate) / 100.0, 2)::float avg_rate
+                -- nullif: diem co ban hop le la [100, 8000], 0 nghia la API khong tra ve
+                -- truong do. Gop so 0 vao mau so keo "% hoa hong" xuong duoi gia tri that.
+                -- Van can nullif du writeRaw da ghi null: cac dong ghi TRUOC fix con la 0.
+                round(avg(nullif(std_rate, 0)) / 100.0, 2)::float avg_rate
          from sku_orders where ${window} and ${VALID_ROW}
-         group by product_id order by gmv desc limit ${limit}`, [days]),
+         group by product_id order by gmv desc limit $2`, [days, limit]),
       q(`select shop_name,
                 sum(price_amount * quantity)::float gmv,
                 count(distinct order_id)::int orders,
@@ -341,7 +354,7 @@ app.get('/api/products', async (req, res, next) => {
                 count(distinct creator_username)::int creators,
                 sum(est_commission)::float est_commission
          from sku_orders where ${window} and ${VALID_ROW} and shop_name is not null
-         group by shop_name order by gmv desc limit ${limit}`, [days]),
+         group by shop_name order by gmv desc limit $2`, [days, limit]),
       q(`select coalesce(content_type,'(trong)') content_type,
                 sum(price_amount * quantity)::float gmv,
                 count(distinct order_id)::int orders,
@@ -359,6 +372,8 @@ app.get('/api/products', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Trang thai he thong: uy quyen partner, cipher, lich su sync. Nhung thu nay truoc gio
+// chi nam trong DB, khong ai nhin thay tu giao dien.
 app.get('/api/system', async (_req, res, next) => {
   try {
     await reapStale();
@@ -375,7 +390,9 @@ app.get('/api/system', async (_req, res, next) => {
     ]);
     // Metric nhom "Uy quyen": trang thai HIEN TAI, khong luu theo ngay nhu metric_values.
     const act = auth.rows.find(a => a.role === 'partner' && a.status === 'active');
-    const daysLeft = (iso) => iso ? Math.round((new Date(iso) - Date.now()) / 86400e3) : null;
+    // floor, khong round: con 0.4 ngay thi la "0 ngay", khong phai lam tron thanh 0 roi
+    // trong nhu con nguyen mot ngay. Het han roi thi so AM -- giao dien doc dau am.
+    const daysLeft = (iso) => iso ? Math.floor((new Date(iso) - Date.now()) / 86400e3) : null;
     const authMetrics = {
       partner_authorizations: auth.rows.filter(a => a.status === 'active').length,
       granted_scopes_count: (act?.granted_scopes ?? []).length,

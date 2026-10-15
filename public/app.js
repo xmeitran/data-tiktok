@@ -1,3 +1,6 @@
+import { periods } from './period.js';
+import { csvCell } from './csv.js';
+
 // Mot loi JS khong duoc bat = trang trang, khong manh moi nao. Bat o day de:
 // (1) hien thang len trang, (2) gui ve server cho vao log.
 let reported = 0;
@@ -48,8 +51,11 @@ let METRICS = [], DAILY = [], CREATORS = [], SYSTEM = null, DOCS = null;
 // MOT bo chon ky duy nhat, ap cho KPI + bieu do + bang ngay + bang creator.
 // Truoc day KPI lay ngay moi nhat con bang cong toan bo lich su -> hai cho noi hai ky khac nhau.
 let PERIOD = 7;                       // so ngay, null = tat ca
-const inPeriod = () => PERIOD ? DAILY.slice(-PERIOD) : DAILY;
-const prevPeriod = () => PERIOD ? DAILY.slice(-PERIOD * 2, -PERIOD) : [];
+// periods() o period.js: bo ngay chi co anh chup creator, va chi tra ve ky truoc khi no
+// DAI BANG ky nay. Hai dieu kien do tung bi sai ngay tai day nen chuyen sang file rieng
+// de test-period.mjs kiem duoc ma khong can DOM.
+const inPeriod = () => periods(DAILY, PERIOD).cur;
+const prevPeriod = () => periods(DAILY, PERIOD).prev;
 const SUM_KEYS = ['gmv','net_gmv','orders','items_sold','est_commission',
                   'commission_base','refund_amount','refund_orders'];
 // Cong metric goc roi TINH LAI ty le. Cong aov/ty le cua nhieu ngay lai la vo nghia.
@@ -277,10 +283,7 @@ function renderCreators() {
 function exportCsv() {
   const rows = creatorRows();
   const head = CCOLS.map(c => c.label).join(',');
-  const body = rows.map(r => CCOLS.map(c => {
-    const v = r[c.key];
-    return typeof v === 'number' ? v : `"${String(v ?? '').replace(/"/g, '""')}"`;
-  }).join(',')).join('\n');
+  const body = rows.map(r => CCOLS.map(c => csvCell(r[c.key])).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url; a.download = `creators-${new Date().toISOString().slice(0,10)}.csv`;
@@ -288,8 +291,10 @@ function exportCsv() {
 }
 
 // ---------- San pham / Shop ----------
-// Doc tu /api/products, tuc tu bang THO sku_orders. Khac bang creator: o day don huy da bi
-// loai ngay trong SQL, nen GMV cong lai bang GMV THUC chu khong phai GMV gop.
+// Doc tu /api/products, tuc tu bang THO sku_orders. Khac KPI tab Tong quan: o day don huy
+// da bi loai ngay trong SQL (VALID_ROW), nen con so cong lai bang dung net_gmv chu khong
+// phai gmv gop. Vi vay cot phai goi la 'GMV thuc' -- giong nhan o bang Creator. Goi no la
+// 'GMV' nhu truoc thi hai tab hien hai so khac nhau duoi cung mot ten.
 let PRODUCTS = { products: [], shops: [], byContentType: [] };
 let PVIEW = 'products';
 let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } };
@@ -297,7 +302,7 @@ let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } 
 const PCOLS = [
   { key: 'product_name',    label: 'Sản phẩm',      wide: true },
   { key: 'shop_name',       label: 'Shop' },
-  { key: 'gmv',             label: 'GMV',           num: true },
+  { key: 'gmv',             label: 'GMV thực',      num: true },
   { key: 'orders',          label: 'Đơn',           num: true },
   { key: 'items',           label: 'SL bán',        num: true },
   { key: 'creators',        label: 'Creator',       num: true },
@@ -306,7 +311,7 @@ const PCOLS = [
 ];
 const SCOLS = [
   { key: 'shop_name',       label: 'Shop',          wide: true },
-  { key: 'gmv',             label: 'GMV',           num: true },
+  { key: 'gmv',             label: 'GMV thực',      num: true },
   { key: 'orders',          label: 'Đơn',           num: true },
   { key: 'products',        label: 'Sản phẩm',      num: true },
   { key: 'creators',        label: 'Creator',       num: true },
@@ -345,7 +350,7 @@ function renderShare() {
   const total = rows.reduce((t, r) => t + Number(r.gmv || 0), 0);
   if (!total) { $('#p-share').innerHTML = ''; return; }
   $('#p-share').innerHTML = `<div class="share" role="img"
-    aria-label="${rows.map(r => `${r.content_type} ${pctShare(r.gmv, total)}`).join(', ')}">
+    aria-label="${esc(rows.map(r => `${r.content_type} ${pctShare(r.gmv, total)}`).join(', '))}">
     ${rows.map((r, i) => {
       const pct = r.gmv / total * 100;
       return `<span class="share-seg s${i % 4}" style="width:${pct}%"
@@ -411,10 +416,7 @@ function exportProductsCsv() {
   const cols = pcols();
   const rows = productRows();
   const head = cols.map(c => c.label).join(',');
-  const body = rows.map(r => cols.map(c => {
-    const v = r[c.key];
-    return typeof v === 'number' ? v : `"${String(v ?? '').replace(/"/g, '""')}"`;
-  }).join(',')).join('\n');
+  const body = rows.map(r => cols.map(c => csvCell(r[c.key])).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob(['\ufeff' + head + '\n' + body], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url; a.download = `${PVIEW}-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -440,7 +442,12 @@ function renderDaily() {
 function renderSystem() {
   if (!SYSTEM) return;
   const { authorizations, categoryAssets, activeCipher, syncRuns, coverage } = SYSTEM;
-  const days = (iso) => iso ? Math.round((new Date(iso) - Date.now()) / 86400e3) : null;
+  // floor, khong round: con 0.4 ngay phai doc ra "0 ngay". So am = da het han, va
+  // "con -3 ngay" thi khong ai hieu la het han ca.
+  const days = (iso) => iso ? Math.floor((new Date(iso) - Date.now()) / 86400e3) : null;
+  const expiry = (n, iso) => n === null ? '—'
+    : n < 0 ? `<b class="warn-text">đã hết hạn</b> (${dt(iso)})`
+    : `còn ${n} ngày (${dt(iso)})`;
 
   const auth = authorizations.map(a => {
     const scopes = a.granted_scopes ?? [];
@@ -452,8 +459,8 @@ function renderSystem() {
       <dl class="meta">
         <dt>open_id</dt><dd><code>${esc(a.open_id)}</code></dd>
         <dt>Uỷ quyền lúc</dt><dd>${dt(a.authorized_at)}</dd>
-        <dt>Access token</dt><dd>${ad === null ? '—' : `còn ${ad} ngày (${dt(a.access_expire_at)})`}</dd>
-        <dt>Refresh token</dt><dd>${rd === null ? '—' : `còn ${rd} ngày`}</dd>
+        <dt>Access token</dt><dd>${expiry(ad, a.access_expire_at)}</dd>
+        <dt>Refresh token</dt><dd>${expiry(rd, a.refresh_expire_at)}</dd>
         <dt>Scope (${scopes.length})</dt><dd>${scopes.length
           ? scopes.map(s => `<code class="${s === 'partner.cap_orders.read' ? 'key-scope' : ''}">${esc(s)}</code>`).join(' ')
           : '—'}</dd>
@@ -489,7 +496,7 @@ function renderSystem() {
       </div>
       <div class="n">${v === null ? '—' : fmt(v)}</div>
       <div class="kpi-f"><span class="muted">${esc(m[k]?.unit ?? '')}</span>
-        ${warn ? '<span class="delta down">sắp hết hạn</span>' : ''}</div>
+        ${warn ? `<span class="delta down">${v < 0 ? 'đã hết hạn' : 'sắp hết hạn'}</span>` : ''}</div>
     </div>`;
   }).join('');
 

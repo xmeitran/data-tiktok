@@ -6,3 +6,6 @@ node_modules/
 *.png
 backfill.log
 server.log
+
+# graphify sinh ra (graph.html ~300KB, graph.json ~270KB) -- dung lai bang /graphify
+graphify-out/

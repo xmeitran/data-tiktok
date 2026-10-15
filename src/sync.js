@@ -1,11 +1,16 @@
-import { q, beat, reapStale } from './db.js';
+import { q, beat, reapStale, upsertMany } from './db.js';
+import { ratios } from './metrics.js';
 import { call, refreshToken } from './tiktok.js';
 
 // "Search CAP Affiliate Orders" v202603 -- dong duy nhat cua package "Read CAP earnings order"
 // (2849348). Mot lan goi ra don cua TOAN BO creator thuoc MCN, moi dong co creator_username.
 const ORDERS_PATH = '/affiliate_partner/202603/cap_order/search';
 const PAGE_SIZE = 100;                       // tran API
-const MAX_WINDOW_DAYS = 92;                  // tran API cho khoang create_time
+// Tran 92 ngay cua TikTok la cho MOI REQUEST; ta goi tung ngay mot nen khong bao gio
+// cham tran do. Cai can chan la so NGAY bi yeu cau: `days` di thang tu body HTTP vao
+// vong lap, moi vong la nhieu lan goi API -- days=100000 se chay mai khong dung.
+// ~13 thang du cho moi backfill that (lan dai nhat da chay: 287 ngay).
+export const MAX_SYNC_DAYS = 400;
 
 // settle_status: CUSTOMER UNPAID | PENDING | SETTLED | INELIGIBLE | FROZEN
 // INELIGIBLE = da tra/hoan/huy, khong co hoa hong.
@@ -21,6 +26,11 @@ const EST_COMMISSION_PARTS = [
 
 const num = (v) => Number(v ?? 0) || 0;
 const day = (d) => d.toISOString().slice(0, 10);
+
+// Khoa chinh cua mot dong SKU-order. MOT ham dung cho ca aggregate() va writeRaw():
+// truoc day hai ben tu ghep chuoi va lech nhau o dong thieu sku_id (`undefined` vs `''`),
+// nen cung mot du lieu bi dedup khac nhau o hai ben.
+export const rowKey = (r) => `${r.id}|${r.sku_id ?? ''}|${r.content_id ?? ''}`;
 
 // Moi truong tien la {amount: string, currency: string}. Da xac nhan bang du lieu that:
 // amount la chuoi so thuan ("91992"), khong ky hieu tien te, khong phan cach nghin.
@@ -116,9 +126,9 @@ export function aggregate(rows) {
     if (!user) continue;
 
     // Chong lap giua cac trang. page_token la search-after nen hiem khi lap, day chi la luoi an toan.
-    const rowKey = `${r.id}|${r.sku_id}|${r.content_id}`;
-    if (seen.has(rowKey)) continue;
-    seen.add(rowKey);
+    const key = rowKey(r);
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     let a = acc.get(user);
     if (!a) {
@@ -177,7 +187,10 @@ export function aggregate(rows) {
   const byCreator = new Map();
   for (const [user, a] of acc) {
     const orders = a.orderIds.size;
-    byCreator.set(user, {
+    // Metric goc. Ba ty le (aov, commission_rate, refund_rate) tinh bang ratios() trong
+    // metrics.js -- cung ham ma /api/summary, /api/daily va /api/creators dung, nen
+    // khong con duong nao de bon cho lech cong thuc nhau nua.
+    const t = {
       gmv: a.gmv,
       orders,
       items_sold: a.items,
@@ -186,13 +199,10 @@ export function aggregate(rows) {
       refund_amount: a.refund,
       refund_orders: a.refundOrderIds.size,
       net_gmv: a.gmv - a.refund,
-      // AOV phai cung MOT CO SO o tu va mau: gmv gom ca don huy, nen mau so cung
-      // phai la TONG don (hop le + huy). Lay gmv/orders se thoi AOV len ~30%.
-      aov: (orders + a.refundOrderIds.size) ? a.gmv / (orders + a.refundOrderIds.size) : 0,
-      // TikTok dinh nghia: hoa hong = GOC HOA HONG x ty le. Nen mau so la commission_base,
-      // khong phai gmv (gmv con gom don huy va ca phan khong tinh hoa hong).
-      commission_rate: a.base ? (a.commission / a.base) * 100 : 0,
-      refund_rate: a.gmv ? (a.refund / a.gmv) * 100 : 0,
+    };
+    byCreator.set(user, {
+      ...t,
+      ...ratios(t),
       products_sold: a.products.size,
       shops_sold: a.shops.size,
       videos_with_orders: a.videos.size,
@@ -206,51 +216,53 @@ export function aggregate(rows) {
   if (bad) warnings.push(`${bad} field tien khong parse duoc (da tinh la 0)`);
   if (currencies.size > 1) warnings.push(`tron nhieu currency: ${[...currencies].join(', ')} -- tong tien khong co y nghia`);
 
+  // Mau so cua AOV la orders + refund_orders, dung VI settle_status la trang thai cua CA
+  // DON nen hai tap phai roi nhau. Neu mot order_id lot vao ca hai thi gia dinh do sai va
+  // AOV dang dem doi don do -- khong tu suy dien lai so lieu, nhung PHAI noi ra, neu khong
+  // no la mot sai so am tham khong ai tim duoc.
+  const overlap = [...acc.values()].reduce(
+    (n, a) => n + [...a.refundOrderIds].filter(id => a.orderIds.has(id)).length, 0);
+  if (overlap) {
+    warnings.push(`${overlap} don co ca dong INELIGIBLE va dong hop le -- settle_status khong con la trang thai cua ca don, mau so AOV dang dem doi cac don nay`);
+  }
+
   return { byCreator, warnings };
 }
 
-// Luu dong tho. Gop thanh INSERT nhieu VALUES: 1 ngay ~8.8k dong, insert tung dong se
-// them 8.8k round-trip/ngay va lam backfill cham gap nhieu lan.
-const RAW_CHUNK = 500;
+const RAW_COLUMNS = [
+  'order_id', 'sku_id', 'content_id', 'day', 'creator_username',
+  'product_id', 'product_name', 'shop_name', 'content_type', 'settle_status',
+  'fully_return', 'quantity', 'price_amount', 'currency', 'commission_base',
+  'est_commission', 'std_rate',
+];
+// Cap nhat MOI truong doi duoc, khong chi mot nua. Truoc day chi dap lai commission_base
+// va est_commission ma de nguyen quantity/price_amount/std_rate: don hoan mot phan thanh
+// "hoa hong moi + GMV cu" trong cung mot dong, va /api/products lech han /api/creators.
+// 3 cot khoa chinh khong nam trong day (dap lai chinh no la vo nghia).
+const RAW_UPDATE = RAW_COLUMNS.slice(3);
 
+// Luu dong tho.
 async function writeRaw(dayStr, rows) {
   const dedup = new Map();
   for (const r of rows ?? []) {
     if (!r?.id || !r.creator_username) continue;
     // Cung khoa chinh nhu bang: dong trung giua cac trang chi giu ban cuoi.
-    dedup.set(`${r.id}|${r.sku_id ?? ''}|${r.content_id ?? ''}`, r);
+    dedup.set(rowKey(r), r);
   }
-  const all = [...dedup.values()];
-  let n = 0;
-
-  for (let i = 0; i < all.length; i += RAW_CHUNK) {
-    const chunk = all.slice(i, i + RAW_CHUNK);
-    const vals = [];
-    const params = [];
-    for (const r of chunk) {
-      const est = EST_COMMISSION_PARTS.reduce((t, k) => t + money(r[k]).value, 0);
-      const base = params.length;
-      vals.push(`($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13},$${base+14},$${base+15},$${base+16},$${base+17})`);
-      params.push(
-        r.id, r.sku_id ?? '', r.content_id ?? '', dayStr, r.creator_username,
-        r.product_id ?? null, r.product_name ?? null, r.shop_name ?? null,
-        r.content_type ?? null, r.settle_status ?? null, r.fully_return ?? null,
-        num(r.quantity), money(r.price).value, money(r.price).currency,
-        money(r.estimated_commission_base).value, est, num(r.standard_commission_rate));
-    }
-    await q(
-      `insert into sku_orders (order_id, sku_id, content_id, day, creator_username,
-         product_id, product_name, shop_name, content_type, settle_status, fully_return,
-         quantity, price_amount, currency, commission_base, est_commission, std_rate)
-       values ${vals.join(',')}
-       on conflict (order_id, sku_id, content_id) do update set
-         day = excluded.day, settle_status = excluded.settle_status,
-         fully_return = excluded.fully_return, commission_base = excluded.commission_base,
-         est_commission = excluded.est_commission, collected_at = now()`,
-      params);
-    n += chunk.length;
-  }
-  return n;
+  const values = [...dedup.values()].map(r => [
+    r.id, r.sku_id ?? '', r.content_id ?? '', dayStr, r.creator_username,
+    r.product_id ?? null, r.product_name ?? null, r.shop_name ?? null,
+    r.content_type ?? null, r.settle_status ?? null, r.fully_return ?? null,
+    num(r.quantity), money(r.price).value, money(r.price).currency,
+    money(r.estimated_commission_base).value,
+    EST_COMMISSION_PARTS.reduce((t, k) => t + money(r[k]).value, 0),
+    // std_rate: diem co ban, khoang hop le [100, 8000]. Truong VANG MAT phai la null,
+    // KHONG phai 0: avg(std_rate) o /api/products gop ca so 0 vao mau so va keo cot
+    // "% hoa hong" cua san pham xuong duoi gia tri that.
+    r.standard_commission_rate == null ? null : num(r.standard_commission_rate),
+  ]);
+  return upsertMany('sku_orders', RAW_COLUMNS,
+    ['order_id', 'sku_id', 'content_id'], RAW_UPDATE, values);
 }
 
 async function writeDay(dayStr, byCreator) {
@@ -281,6 +293,10 @@ async function writeDay(dayStr, byCreator) {
 export async function runSync({ days = 7, skipExisting = false } = {}) {
   // Tran 92 ngay cua TikTok la cho MOI REQUEST. Ta goi tung ngay mot (1 ngay/request)
   // nen keo bao nhieu ngay cung duoc; chi can moi request nam trong 1 ngay.
+  // Nhung `days` den tu body HTTP: khong chan thi days=100000 chay 100.000 vong goi API.
+  const asked = Math.floor(Number(days));
+  if (!Number.isFinite(asked) || asked < 1) throw new Error(`days khong hop le: ${days}`);
+  days = Math.min(asked, MAX_SYNC_DAYS);
 
   // Thu don xac cua lan chay truoc truoc khi mo run moi, neu khong dashboard van
   // thay dong 'running' cu va tuong job kia con song.
@@ -326,6 +342,7 @@ export async function runSync({ days = 7, skipExisting = false } = {}) {
       await beat(runId);
     }
 
+    if (asked > days) warnings.unshift(`yeu cau ${asked} ngay, da ha xuong tran ${MAX_SYNC_DAYS}`);
     if (skipped) warnings.unshift(`bo qua ${skipped} ngay da co du lieu`);
     const note = [...errors, ...warnings].join(' | ') || null;
     await q(`update sync_runs set finished_at=now(), status=$2, rows_written=$3, note=$4 where id=$1`,

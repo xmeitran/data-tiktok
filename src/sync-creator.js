@@ -5,7 +5,7 @@
 // Khac sync.js o mot diem co ban: cap_order co create_time nen chia theo NGAY duoc,
 // con 3 endpoint duoi KHONG co thoi diem tao -> moi lan chay la mot ANH CHUP (snapshot_day).
 // Vi vay dung goi runCreatorSync nhieu lan trong ngay roi coi la chuoi thoi gian.
-import { q, beat, reapStale } from './db.js';
+import { q, beat, reapStale, upsertMany } from './db.js';
 import { call, refreshToken } from './tiktok.js';
 import { CREATOR_API } from './tiktok-fields.js';
 
@@ -124,72 +124,72 @@ async function writeProfile(openId, p) {
   return p.username ?? null;
 }
 
-async function writeSamples(openId, username, dayStr, rows) {
-  for (const s of rows) {
-    if (!s?.id) continue;
-    await q(
-      `insert into sample_applications (application_id, snapshot_day, creator_open_id,
-         creator_username, status, product_id, sku_id, main_order_id, activity_id,
-         fulfillment_status, fulfillment_expire_at, bound_product_status)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       on conflict (application_id, snapshot_day) do update set
-         status=excluded.status, fulfillment_status=excluded.fulfillment_status,
-         bound_product_status=excluded.bound_product_status,
-         main_order_id=excluded.main_order_id, collected_at=now()`,
-      [s.id, dayStr, openId, username, s.status ?? null,
-       s.sample_product?.id ?? null, s.sample_product?.sku_id ?? null,
-       s.main_order_id ?? null, s.activity_id ?? null,
-       s.creator_fulfillment?.status ?? null, ts(s.creator_fulfillment?.expiration_time),
-       s.creator_fulfillment?.bound_product_status ?? null]);
-  }
-  return rows.length;
+// Ba writer duoi day dung upsertMany (db.js): gop thanh INSERT nhieu VALUES. Truoc day
+// ghi tung dong mot -- mot creator co 2000 san pham showcase la 2000 round-trip, trong khi
+// sync.js da gop vi dung ly do do tu dau.
+const SAMPLE_COLUMNS = [
+  'application_id', 'snapshot_day', 'creator_open_id', 'creator_username', 'status',
+  'product_id', 'sku_id', 'main_order_id', 'activity_id', 'fulfillment_status',
+  'fulfillment_expire_at', 'bound_product_status',
+];
+
+function writeSamples(openId, username, dayStr, rows) {
+  const values = rows.filter(s => s?.id).map(s => [
+    s.id, dayStr, openId, username, s.status ?? null,
+    s.sample_product?.id ?? null, s.sample_product?.sku_id ?? null,
+    s.main_order_id ?? null, s.activity_id ?? null,
+    s.creator_fulfillment?.status ?? null, ts(s.creator_fulfillment?.expiration_time),
+    s.creator_fulfillment?.bound_product_status ?? null,
+  ]);
+  return upsertMany('sample_applications', SAMPLE_COLUMNS,
+    ['application_id', 'snapshot_day'],
+    ['status', 'fulfillment_status', 'bound_product_status', 'main_order_id'], values);
 }
 
-async function writeShowcase(openId, username, dayStr, origin, rows) {
-  for (const p of rows) {
-    if (!p?.id) continue;
-    await q(
-      `insert into showcase_products (creator_open_id, product_id, origin, snapshot_day,
-         creator_username, title, shop_name, inventory_status, review_status, is_hidden,
-         added_status, source, commission_rate, reward_rate, collaboration_id, collab_type)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       on conflict (creator_open_id, product_id, origin, snapshot_day) do update set
-         inventory_status=excluded.inventory_status, review_status=excluded.review_status,
-         is_hidden=excluded.is_hidden, added_status=excluded.added_status,
-         commission_rate=excluded.commission_rate, reward_rate=excluded.reward_rate,
-         collected_at=now()`,
-      [openId, p.id, origin, dayStr, username, p.title ?? null, p.shop?.name ?? null,
-       p.status?.inventory_status ?? null, p.status?.review_status ?? null,
-       p.status?.is_hidden ?? null, p.status?.added_status ?? null, p.source ?? null,
-       num(p.commission?.rate), num(p.commission?.reward_rate),
-       p.collaboration?.id ?? null, p.collaboration?.type ?? null]);
-  }
-  return rows.length;
+const SHOWCASE_COLUMNS = [
+  'creator_open_id', 'product_id', 'origin', 'snapshot_day', 'creator_username',
+  'title', 'shop_name', 'inventory_status', 'review_status', 'is_hidden',
+  'added_status', 'source', 'commission_rate', 'reward_rate', 'collaboration_id',
+  'collab_type',
+];
+
+function writeShowcase(openId, username, dayStr, origin, rows) {
+  const values = rows.filter(p => p?.id).map(p => [
+    openId, p.id, origin, dayStr, username, p.title ?? null, p.shop?.name ?? null,
+    p.status?.inventory_status ?? null, p.status?.review_status ?? null,
+    p.status?.is_hidden ?? null, p.status?.added_status ?? null, p.source ?? null,
+    num(p.commission?.rate), num(p.commission?.reward_rate),
+    p.collaboration?.id ?? null, p.collaboration?.type ?? null,
+  ]);
+  return upsertMany('showcase_products', SHOWCASE_COLUMNS,
+    ['creator_open_id', 'product_id', 'origin', 'snapshot_day'],
+    ['inventory_status', 'review_status', 'is_hidden', 'added_status',
+     'commission_rate', 'reward_rate'], values);
 }
 
-async function writeCollaborations(openId, username, dayStr, shopId, rows) {
-  let n = 0;
+const COLLAB_COLUMNS = [
+  'creator_open_id', 'collaboration_id', 'product_id', 'snapshot_day',
+  'creator_username', 'shop_id', 'name', 'status', 'product_title',
+  'commission_rate', 'est_amount', 'currency',
+];
+
+function writeCollaborations(openId, username, dayStr, shopId, rows) {
+  const values = [];
   for (const c of rows) {
     if (!c?.id) continue;
     // Chien dich khong co san pham van phai luu 1 dong, neu khong target_collaborations
     // dem thieu dung nhung chien dich chua gan san pham.
     for (const p of c.products?.length ? c.products : [{}]) {
-      await q(
-        `insert into target_collaborations (creator_open_id, collaboration_id, product_id,
-           snapshot_day, creator_username, shop_id, name, status, product_title,
-           commission_rate, est_amount, currency)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-         on conflict (creator_open_id, collaboration_id, product_id, snapshot_day) do update set
-           status=excluded.status, name=excluded.name,
-           commission_rate=excluded.commission_rate, est_amount=excluded.est_amount,
-           collected_at=now()`,
-        [openId, c.id, p.id ?? '', dayStr, username, shopId, c.name ?? null, c.status ?? null,
-         p.title ?? null, num(p.commission?.rate), num(p.commission?.amount) || null,
-         p.commission?.currency ?? null]);
-      n++;
+      values.push([
+        openId, c.id, p.id ?? '', dayStr, username, shopId, c.name ?? null,
+        c.status ?? null, p.title ?? null, num(p.commission?.rate),
+        num(p.commission?.amount) || null, p.commission?.currency ?? null,
+      ]);
     }
   }
-  return n;
+  return upsertMany('target_collaborations', COLLAB_COLUMNS,
+    ['creator_open_id', 'collaboration_id', 'product_id', 'snapshot_day'],
+    ['status', 'name', 'commission_rate', 'est_amount'], values);
 }
 
 // metric_values.creator_username tro ve creators(username) nen phai co dong creators truoc.

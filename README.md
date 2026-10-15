@@ -170,8 +170,15 @@ cứu được run sắp bị coi là chết, ghi chú cũ không bị ghi đè,
   sửa `EST_COMMISSION_PARTS` trong `src/sync.js`.
 - Các trường `actual_*` chỉ có `amount` khi `settle_status` là `SETTLED` hoặc `INELIGIBLE`, nên
   không dùng được cho kỳ vừa kết thúc. Hiện pipeline chỉ dùng nhóm `estimated_*`.
-- 6 metric chưa nối API (`creators_authorized`, `live_ctr`, `live_ctor`, `video_count`,
-  `live_count`, `sample_requests`) — hiện trạng thái "Chưa kéo" trong bảng.
+- **Ngày chia theo UTC, không theo giờ VN.** `runSync` lấy mốc `setUTCHours(0,0,0,0)` và
+  `period_start` là ngày UTC, nên một "ngày" là 07:00 VN → 07:00 VN hôm sau: đơn phát sinh
+  00:00–07:00 giờ VN rơi vào ngày hôm trước. Nội bộ nhất quán (KPI, biểu đồ, bảng đều cùng
+  mốc), nhưng **đối soát từng ngày với Seller Center theo giờ VN sẽ lệch** — tổng cả kỳ dài
+  thì khớp. Chưa đổi sang offset VN vì việc đó diễn giải lại toàn bộ dữ liệu đã kéo; muốn đổi
+  thì phải backfill lại từ đầu, không chỉ sửa code.
+- 5 metric chưa nối API (`live_ctr`, `live_ctor`, `video_count`, `live_count`,
+  `showcase_products_unsold`) — hiện trạng thái "Chưa kéo" trong bảng. `test-metrics.mjs` in
+  ra danh sách này mỗi lần chạy, nên nó không lệch với code được.
 - Chưa có webhook nhận sự kiện huỷ uỷ quyền; phát hiện gián tiếp khi refresh token thất bại.
 - `reapStale()` chỉ chạy khi có người mở dashboard hoặc khởi động lần chạy mới. Không ai mở thì
   không ai dọn — đủ cho nhu cầu hiện tại, nhưng không phải cảnh báo chủ động.

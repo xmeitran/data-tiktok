@@ -13,6 +13,55 @@ export const q = (text, params) => pool.query(text, params);
 export const VALID_ROW =
   `settle_status is distinct from 'INELIGIBLE' and fully_return is distinct from 'Yes'`;
 
+// Mốc "ngày dữ liệu mới nhất". PHẢI tính trên metric ĐƠN, không phải trên cả bảng
+// metric_values: sync-creator ghi metric ảnh chụp vào HÔM NAY (trạng thái hiện tại,
+// không backfill được) còn sync đơn chỉ ghi tới HÔM QUA. Lấy max(period_start) của cả
+// bảng sẽ neo vào một ngày KHÔNG CÓ ĐƠN NÀO -- KPI mất sạch gmv/orders, banner freshness
+// báo "dữ liệu đến hôm nay" trong khi đơn đang trễ thật, và cửa sổ ?days=7 chỉ còn 6 ngày.
+// `gmv` là đại diện: aggregate() luôn ghi key này cho mọi creator thấy trong ngày.
+export const ORDER_DAY =
+  `(select max(period_start) from metric_values where metric_key = 'gmv')`;
+
+// --- Upsert nhieu dong trong MOT cau lenh ---
+// sync.js da lam viec nay bang tay (ghep `$${base+1}`..`$${base+17}`) vi 1 ngay ~8.8k dong,
+// insert tung dong la ~8.8k round-trip. sync-creator.js thi KHONG, nen mot creator co 2000
+// san pham showcase la 2000 round-trip. Gop lai o day: mot cho dung, bon cho goi -- va
+// khong con ai phai dem tay so thu tu tham so (dem lech mot cai la du lieu vao sai cot,
+// khong loi, khong dau vet).
+//
+// `update` rong => `do nothing`. `collected_at` luon duoc dap lai: ca 4 bang deu co cot nay
+// va y nghia cua no la "lan cuoi thay dong nay tu API".
+const PARAM_CAP = 60000;      // tran that cua Postgres la 65535 tham so/cau lenh
+
+export async function upsertMany(table, columns, conflict, update, rows) {
+  if (!rows?.length) return 0;
+  const width = columns.length;
+  for (const [i, row] of rows.entries()) {
+    // Loi lap trinh, nhung neu de lot thi du lieu vao sai cot ma khong bao gi.
+    if (row.length !== width) {
+      throw new Error(`upsertMany(${table}): dong ${i} co ${row.length} gia tri, can ${width}`);
+    }
+  }
+  const set = update.length
+    ? `do update set ${update.map(c => `${c} = excluded.${c}`).join(', ')}, collected_at = now()`
+    : 'do nothing';
+  // Chia theo SO THAM SO, khong theo so dong: bang rong cot thi 500 dong da vuot tran.
+  const perChunk = Math.max(1, Math.min(500, Math.floor(PARAM_CAP / width)));
+  let n = 0;
+  for (let i = 0; i < rows.length; i += perChunk) {
+    const chunk = rows.slice(i, i + perChunk);
+    const vals = chunk
+      .map((row, j) => `(${row.map((_, k) => '$' + (j * width + k + 1)).join(',')})`)
+      .join(',');
+    await q(
+      `insert into ${table} (${columns.join(', ')}) values ${vals}
+       on conflict (${conflict.join(', ')}) ${set}`,
+      chunk.flat());
+    n += chunk.length;
+  }
+  return n;
+}
+
 // --- Nhip tim cho sync_runs ---
 // Tien trinh bi kill (SIGKILL, mat dien, dong may) khong chay duoc handler nao, nen khong
 // the tu danh dau la hong. Hau qua: dong sync_runs ket 'running' vinh vien va dashboard

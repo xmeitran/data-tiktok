@@ -97,7 +97,7 @@ export const METRICS = [
     definition: 'Tổng giá trị đơn hàng được quy cho creator trong kỳ, tính theo giá trị đơn GỐC trước hoàn/huỷ.',
     formula: 'SUM(price.amount × quantity) trên mọi dòng SKU-order của creator',
     source: 'POST /affiliate_partner/202603/cap_order/search → price.amount × quantity. Response KHÔNG có trường tiền ở cấp đơn, phải tự nhân.',
-    pitfalls: 'GMV là số GROSS. Đừng lấy nó làm doanh thu thực. Đơn huỷ/hoàn vẫn nằm trong GMV cho tới khi bạn trừ bằng refund_amount.',
+    pitfalls: 'GMV là số GROSS. Đừng lấy nó làm doanh thu thực. Đơn huỷ/hoàn vẫn nằm trong GMV cho tới khi bạn trừ bằng refund_amount. MÚI GIỜ: ngày được chia theo UTC, không theo giờ VN — một "ngày" ở đây là 07:00 VN đến 07:00 VN hôm sau, nên đơn phát sinh 00:00–07:00 giờ VN được tính vào ngày hôm trước. Nội bộ dashboard thì nhất quán (mọi metric theo ngày đều dùng cùng mốc này), nhưng khi đối soát với báo cáo Seller Center / Partner Center theo giờ VN thì tổng từng ngày sẽ lệch — tổng cả kỳ dài thì khớp.',
     available: true,
   },
   {
@@ -396,9 +396,9 @@ export const METRICS = [
     level: 'creator',
     definition: 'Trong số sản phẩm creator đang treo trong showcase tại thời điểm chụp, bao nhiêu cái CHƯA BAO GIỜ ra một đơn hợp lệ nào cho chính creator đó. Đây là giá trị thật sự của việc creator uỷ quyền: token partner chỉ thấy sản phẩm ĐÃ bán, nối với showcase mới thấy được phần treo mà chết.',
     formula: 'COUNT(DISTINCT product_id) trong ảnh chụp showcase mới nhất của creator mà KHÔNG có dòng sku_orders hợp lệ nào cùng (product_id, creator_username). = showcase_products − số sản phẩm đã ra đơn.',
-    source: 'GET /affiliate_creator/202405/showcases/products?origin=SHOWCASE (token CREATOR) LEFT JOIN bảng thô sku_orders từ POST /affiliate_partner/202603/cap_order/search (token partner). Cần CẢ HAI uỷ quyền mới tính được.',
+    source: 'CHƯA NỐI: aggregateCreator() trong sync-creator.js không tính key này, nên nó chưa bao giờ vào metric_values — công thức dưới đây đã viết sẵn nhưng chưa có chỗ nào chạy. Nguồn khi nối: GET /affiliate_creator/202405/showcases/products?origin=SHOWCASE (token CREATOR) LEFT JOIN bảng thô sku_orders từ POST /affiliate_partner/202603/cap_order/search (token partner). Cần CẢ HAI uỷ quyền mới tính được.',
     pitfalls: 'Nối bằng (product_id, creator_username) chứ không phải product_id trần: cùng một sản phẩm creator khác bán được không làm nó thành "đã ra đơn" của creator này. "Chưa ra đơn" là TRÊN TOÀN BỘ dữ liệu sku_orders đang có, nên nếu backfill chưa phủ hết quá khứ thì số này bị thổi phồng. Là ẢNH CHỤP như showcase_products — KHÔNG cộng dồn nhiều ngày. Giá trị lưu trong metric_values là tính tại thời điểm sync; đơn về sau làm số thật giảm, nên endpoint tính lại tươi có thể thấp hơn. Xem lý do chết (ZERO_COMMISSION, SOLD_OUT, HIDDEN, review chưa APPROVED) trước khi kết luận creator không chịu làm nội dung. Những ngày sync bỏ qua việc chụp lại showcase (xem pitfalls của showcase_products), số này tính trên danh sách sản phẩm CŨ — chỉ phần đơn hàng là mới.',
-    available: true,
+    available: false,
   },
   {
     key: 'target_collaborations',
@@ -417,3 +417,28 @@ export const METRICS = [
 
 export const BY_KEY = Object.fromEntries(METRICS.map(m => [m.key, m]));
 export const GROUPS = [...new Set(METRICS.map(m => m.group))];
+
+// Ba tỷ lệ này KHÔNG cộng được: cộng aov của 7 ngày lại là vô nghĩa, nên mọi nơi hiển thị
+// đều phải TÍNH LẠI từ metric gốc. Trước đây công thức được viết lại ở bốn chỗ
+// (aggregate, /api/summary, /api/daily, /api/creators) và đúng một chỗ đã lệch:
+// /api/summary dùng gmv/orders và est_commission/gmv -- thổi AOV lên 50% và báo
+// %hoa hồng chỉ còn 53% giá trị thật. Đặt ở đây, cạnh chính ba `formula:` khai báo
+// chúng, thì công thức và mô tả không còn đường nào lệch nhau nữa.
+export function ratios(t = {}) {
+  const n = (v) => Number(v) || 0;
+  const gmv = n(t.gmv);
+  // Cùng MỘT cơ sở ở tử và mẫu: gmv gồm cả đơn huỷ, nên mẫu số phải là TỔNG đơn
+  // (hợp lệ + huỷ). Lấy gmv/orders sẽ thổi AOV lên.
+  const allOrders = n(t.orders) + n(t.refund_orders);
+  // TikTok định nghĩa: hoa hồng = GỐC HOA HỒNG x tỷ lệ. Nên mẫu số là commission_base,
+  // không phải gmv (gmv còn gồm đơn huỷ và cả phần không tính hoa hồng).
+  const base = n(t.commission_base);
+  return {
+    aov: allOrders ? gmv / allOrders : 0,
+    commission_rate: base ? (n(t.est_commission) / base) * 100 : 0,
+    refund_rate: gmv ? (n(t.refund_amount) / gmv) * 100 : 0,
+  };
+}
+
+// Các key mà ratios() tự tính -- không bao giờ được CỘNG khi gộp nhiều ngày/nhiều creator.
+export const RATIO_KEYS = Object.keys(ratios());

@@ -2,7 +2,8 @@
 // Payload theo DUNG hinh dang response that cua
 // POST /affiliate_partner/202603/cap_order/search (da an danh creator_username).
 import assert from 'node:assert/strict';
-import { aggregate, money } from './src/sync.js';
+import { aggregate, money, runSync, rowKey, MAX_SYNC_DAYS } from './src/sync.js';
+import { ratios } from './src/metrics.js';
 
 // --- money(): da xac nhan bang du lieu that la chuoi so thuan, khong ky hieu tien te
 assert.equal(money({ amount: '91992', currency: 'VND' }).value, 91992);
@@ -134,5 +135,98 @@ assert.equal(dim.shops_sold, 2, 'Shop 1 + Shop 2; Shop huy bi loai');
 assert.equal(dim.videos_with_orders, 1, 'v1 xuat hien o 2 dong SKU -> 1 video; v-huy bi loai');
 assert.equal(dim.lives_with_orders, 1);
 assert.equal(dim.orders, 3, 'd1,d2,d3 hop le; d4 huy');
+
+// --- ratios(): MOT ham duy nhat cho ca 4 cho hien thi -----------------------
+// Truoc day cong thuc duoc viet lai o aggregate, /api/summary, /api/daily va
+// /api/creators; /api/summary da lech va khong co test nao bat duoc.
+// 2 don hop le + 1 don INELIGIBLE, gmv 300k, base 160k, hoa hong 24k.
+const t = { gmv: 300000, orders: 2, refund_orders: 1,
+            est_commission: 24000, commission_base: 160000, refund_amount: 100000 };
+const r = ratios(t);
+
+// Mau so cua AOV la TONG don (hop le + huy), KHONG phai rieng don hop le.
+assert.equal(r.aov, 100000, 'AOV = gmv / (orders + refund_orders)');
+assert.notEqual(r.aov, t.gmv / t.orders, 'gmv/orders thoi AOV len 50% -- day la bug cu');
+
+// Mau so cua %hoa hong la commission_base, KHONG phai gmv.
+assert.equal(r.commission_rate, 15, '%HH = est_commission / commission_base * 100');
+assert.notEqual(r.commission_rate, (t.est_commission / t.gmv) * 100,
+  'chia cho gmv bao %HH chi con 53% gia tri that -- day la bug cu');
+
+assert.equal(r.refund_rate, 100000 / 300000 * 100);
+
+// Chia 0 phai ra 0, khong phai NaN/Infinity: ngay chua co don nao van phai render duoc.
+const zero = ratios({});
+assert.deepEqual(zero, { aov: 0, commission_rate: 0, refund_rate: 0 });
+for (const [k, v] of Object.entries(zero)) assert.ok(Number.isFinite(v), `${k} phai huu han`);
+
+// pg tra numeric duoi dang CHUOI -> ratios() phai chiu duoc chuoi, neu khong
+// /api/summary va /api/creators cong chuoi va ra ket qua vo nghia.
+assert.deepEqual(ratios({ gmv: '300000', orders: '2', refund_orders: '1',
+                          est_commission: '24000', commission_base: '160000',
+                          refund_amount: '100000' }), r, 'phai xu ly numeric dang chuoi');
+
+// Va aggregate() phai dung DUNG ham do, khong phai mot ban copy.
+assert.equal(dim.aov, ratios(dim).aov, 'aggregate phai lay aov tu ratios()');
+assert.equal(dim.commission_rate, ratios(dim).commission_rate);
+assert.equal(dim.refund_rate, ratios(dim).refund_rate);
+
+// --- §6.4: don co ca dong INELIGIBLE va dong hop le phai duoc BAO -----------
+// Mau so AOV = orders + refund_orders, dung VI settle_status la trang thai ca don nen
+// hai tap roi nhau. Neu du lieu pha gia dinh do thi AOV dem doi don -- khong tu suy dien
+// lai so lieu, nhung phai noi ra, neu khong no la sai so am tham khong ai tim duoc.
+const split = aggregate([
+  row({ id: 'z1', sku_id: 'sa', creator_username: 'e', settle_status: 'SETTLED',
+        price: M(1000), quantity: 1,
+        estimated_commission_base: M(1000), estimated_standard_commission: M(100) }),
+  row({ id: 'z1', sku_id: 'sb', creator_username: 'e', settle_status: 'INELIGIBLE',
+        price: M(1000), quantity: 1 }),
+]);
+assert.match(split.warnings.join(' '), /settle_status khong con la trang thai cua ca don/,
+  'don nam ca hai ben phai duoc bao');
+const e = split.byCreator.get('e');
+assert.equal(e.orders, 1);
+assert.equal(e.refund_orders, 1, 'cung mot order_id dem o ca hai ben -> day la cai duoc bao');
+
+// Du lieu binh thuong (settle_status dung la cua ca don) thi KHONG duoc bao gi.
+assert.equal(aggregate([
+  row({ id: 'z2', sku_id: 'sa', creator_username: 'f', settle_status: 'SETTLED',
+        price: M(1000), quantity: 1,
+        estimated_commission_base: M(1000), estimated_standard_commission: M(100) }),
+  row({ id: 'z3', sku_id: 'sa', creator_username: 'f', settle_status: 'INELIGIBLE',
+        price: M(1000), quantity: 1 }),
+]).warnings.filter(w => /settle_status/.test(w)).length, 0, 'du lieu dung thi khong duoc bao');
+
+// --- §6.3: khoa dedup phai GIONG HET giua aggregate() va writeRaw() ---------
+// Bug cu KHONG phai aggregate dedup sai mot minh (no van gom 'undefined|undefined' lai
+// voi nhau): bug la HAI BEN ghep khoa khac nhau -- aggregate dung `${r.sku_id}` (ra chuoi
+// 'undefined') con writeRaw dung `?? ''`. Gio ca hai goi cung rowKey(), nen dieu phai
+// kiem la chinh hop dong cua ham do: truong vang mat thanh '' chu khong phai 'undefined'.
+// Day cung la quy uoc cua bang (sku_orders.content_id ... not null default '').
+assert.equal(rowKey({ id: 'a' }), 'a||', "truong vang mat phai thanh '' nhu trong bang");
+assert.equal(rowKey({ id: 'a', sku_id: 's' }), 'a|s|');
+assert.equal(rowKey({ id: 'a', sku_id: 's', content_id: 'c' }), 'a|s|c');
+assert.ok(!rowKey({ id: 'a' }).includes('undefined'),
+  "khoa KHONG duoc chua 'undefined' -- do la cho hai ben tung lech nhau");
+// null va undefined phai cho cung mot khoa, khong duoc tach thanh hai dong.
+assert.equal(rowKey({ id: 'a', sku_id: null }), rowKey({ id: 'a', sku_id: undefined }));
+const noSku = aggregate([
+  { id: 'n1', creator_username: 'g', settle_status: 'SETTLED', quantity: 1,
+    price: M(500), estimated_commission_base: M(500), estimated_standard_commission: M(50) },
+  { id: 'n1', creator_username: 'g', settle_status: 'SETTLED', quantity: 1,
+    price: M(500), estimated_commission_base: M(500), estimated_standard_commission: M(50) },
+]).byCreator.get('g');
+assert.equal(noSku.gmv, 500, 'hai dong y het (deu thieu sku_id) phai duoc coi la MOT dong');
+assert.equal(noSku.items_sold, 1);
+
+// --- §6.6: `days` den tu body HTTP -> phai bi chan ------------------------
+assert.ok(Number.isInteger(MAX_SYNC_DAYS) && MAX_SYNC_DAYS > 0 && MAX_SYNC_DAYS <= 1000,
+  'tran so ngay phai la mot so nguyen hop ly');
+// Ba gia tri duoi day truoc kia deu chay vao vong lap: 0/-1 chay 0 vong (im lang khong
+// lam gi), 'abc' thanh NaN. Gio phai tu choi TRUOC khi mo run moi trong sync_runs.
+for (const bad of [0, -1, 'abc', NaN, Infinity, null]) {
+  await assert.rejects(() => runSync({ days: bad }), /days khong hop le/,
+    `days=${String(bad)} phai bi tu choi`);
+}
 
 console.log('aggregate OK');
