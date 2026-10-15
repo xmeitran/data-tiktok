@@ -93,3 +93,64 @@ footer { color: var(--color--neutral--500); font-size: var(--small--font-size); 
 @media (prefers-reduced-motion: no-preference) {
   .card, nav button, .btn { transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
 }
+
+/* --- Wiki: thanh cong cu + hai kieu hien thi --- */
+.toolbar {
+  position: sticky; top: 68px; z-index: 5;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 12px 0 16px; margin-bottom: 4px;
+  background: var(--up-color-background);
+}
+.toolbar .search { position: relative; flex: 1 1 320px; }
+.toolbar .search input { width: 100%; padding-right: 34px; }
+.toolbar .search kbd {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  pointer-events: none; font: inherit; font-size: 11px; line-height: 1;
+  padding: 3px 6px; border-radius: 5px;
+  border: 1px solid var(--color--neutral--200); background: var(--color--neutral--50);
+  color: var(--color--neutral--500);
+}
+.count { color: var(--color--neutral--500); font-size: var(--small--font-size); margin-left: auto; }
+
+.seg { display: inline-flex; border: 1.5px solid var(--color--neutral--200);
+       border-radius: var(--up-radius-control); overflow: hidden; background: #fff; }
+.seg button {
+  font: inherit; cursor: pointer; border: 0; background: transparent;
+  padding: 9px 16px; color: var(--up-color-body);
+}
+.seg button + button { border-left: 1.5px solid var(--color--neutral--200); }
+.seg button[aria-pressed="true"] { background: var(--up-color-primary); color: #fff; }
+.seg button:focus-visible { outline: 2px solid var(--up-color-primary); outline-offset: -2px; }
+
+.w-group-h {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 28px 0 12px; color: var(--up-color-heading); font-weight: 600;
+}
+.w-group-h:first-child { margin-top: 8px; }
+.w-group-h .n { color: var(--color--neutral--500); font-weight: 400; font-size: var(--small--font-size); }
+
+.w-card { display: flex; flex-direction: column; gap: 10px; }
+.w-card .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.w-card .head h3 {
+  margin: 0; font-size: var(--h5--font-size); font-weight: 600;
+  color: var(--up-color-heading); letter-spacing: -0.3px;
+}
+.w-card .def { margin: 0; }
+.w-card .meta { display: grid; grid-template-columns: 92px 1fr; gap: 6px 12px;
+                font-size: var(--small--font-size); margin: 0; }
+.w-card .meta dt { color: var(--color--neutral--600); }
+.w-card .meta dd { margin: 0; overflow-wrap: anywhere; }
+.w-card details > summary {
+  cursor: pointer; font-size: var(--small--font-size);
+  color: var(--up-color-primary); list-style-position: inside;
+}
+.w-card details[open] > summary { margin-bottom: 8px; }
+
+mark { background: var(--color--yellow--50); color: var(--color--yellow--200);
+       border-radius: 4px; padding: 0 2px; }
+.empty { color: var(--color--neutral--500); padding: 40px 0; text-align: center; }
+
+@media (max-width: 767px) {
+  .toolbar { position: static; }
+  .count { margin-left: 0; }
+}

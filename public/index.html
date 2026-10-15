@@ -54,8 +54,29 @@
   <section id="tab-wiki" class="hide">
     <h1>Wiki metric</h1>
     <p class="sub">Định nghĩa, công thức, nguồn và bẫy thường gặp của từng chỉ số.</p>
-    <div class="wiki" id="wiki"></div>
+
+    <div class="toolbar">
+      <div class="search">
+        <input type="search" id="w-q" placeholder="Tìm tên, mã, định nghĩa, công thức, nguồn…"
+               aria-label="Tìm metric" autocomplete="off">
+        <kbd>/</kbd>
+      </div>
+      <select id="w-group" aria-label="Lọc theo nhóm"><option value="">Mọi nhóm</option></select>
+      <select id="w-status" aria-label="Lọc theo pipeline">
+        <option value="">Mọi trạng thái</option>
+        <option value="1">Đã kéo</option>
+        <option value="0">Chưa kéo</option>
+      </select>
+      <div class="seg" id="w-view" role="group" aria-label="Kiểu hiển thị">
+        <button data-view="card" aria-pressed="true">Thẻ</button>
+        <button data-view="table" aria-pressed="false">Bảng</button>
+      </div>
+      <span class="count" id="w-count" aria-live="polite"></span>
+    </div>
+
+    <div id="wiki"></div>
   </section>
+
 </main>
 
 <footer class="wrap">Dữ liệu từ TikTok Shop Partner Open API · lưu tại Postgres · giao diện theo token UpBase.</footer>
