@@ -1,5 +1,6 @@
 import { periods } from './period.js';
 import { csvCell } from './csv.js';
+import { summarize, alertsFor, worst, change, RULES } from './alerts.js';
 
 // Mot loi JS khong duoc bat = trang trang, khong manh moi nao. Bat o day de:
 // (1) hien thang len trang, (2) gui ve server cho vao log.
@@ -227,19 +228,22 @@ async function loadSummary() {
 
 // ---------- Creator ----------
 let SORT = { key: 'net_gmv', dir: -1 };
+let ALERT_COUNTS = { stopped: 0, drop: 0, refund: 0, rise: 0 };
+let ALERT_FILTER = '';            // '' = tat ca; hoac stopped|drop|refund|rise
+// `delta: true` = cot co so sanh voi ky truoc ngay duoi con so.
 const CCOLS = [
   { key: 'username',        label: 'Creator',      num: false },
   { key: 'days',            label: 'Số ngày',      num: true },
-  { key: 'gmv',             label: 'GMV',          num: true },
-  { key: 'net_gmv',         label: 'GMV thực',     num: true },
+  { key: 'gmv',             label: 'GMV',          num: true , delta: true },
+  { key: 'net_gmv',         label: 'GMV thực',     num: true , delta: true },
   { key: 'refund_amount',   label: 'Hoàn/huỷ',     num: true },
   { key: 'refund_orders',   label: 'Đơn huỷ',      num: true },
   { key: 'refund_rate',     label: '% hoàn (tiền)', num: true, unit: '%' },
-  { key: 'orders',          label: 'Đơn hợp lệ',   num: true },
+  { key: 'orders',          label: 'Đơn hợp lệ',   num: true , delta: true },
   { key: 'items_sold',      label: 'SP bán',       num: true },
   { key: 'aov',             label: 'AOV',          num: true },
   { key: 'commission_base', label: 'Gốc hoa hồng', num: true },
-  { key: 'est_commission',  label: 'Hoa hồng',     num: true },
+  { key: 'est_commission',  label: 'Hoa hồng',     num: true , delta: true },
   { key: 'commission_rate', label: '% hoa hồng',   num: true, unit: '%' },
   { key: 'first_seen',      label: 'Thấy đầu',     num: false },
   { key: 'last_seen',       label: 'Thấy cuối',    num: false },
@@ -249,7 +253,9 @@ const SUMMABLE = new Set(['days','gmv','net_gmv','refund_amount','refund_orders'
 
 function creatorRows() {
   const kw = $('#c-q').value.trim().toLowerCase();
-  return CREATORS.filter(r => !kw || r.username.toLowerCase().includes(kw))
+  return CREATORS
+    .filter(r => !ALERT_FILTER || r.alerts.some(a => a.code === ALERT_FILTER))
+    .filter(r => !kw || r.username.toLowerCase().includes(kw))
     .sort((a, b) => {
       const { key, dir } = SORT;
       const col = CCOLS.find(c => c.key === key);
@@ -258,24 +264,88 @@ function creatorRows() {
     });
 }
 
+// Chip loc nhanh dau bang. Cau hoi dau tien khi mo bang nay la "ai dang tut?" --
+// tra loi bang mot con so bam duoc, thay vi bat nguoi ta tu so 111 dong voi ky truoc.
+const ALERT_CHIPS = [
+  { code: 'stopped', level: 'bad',  label: 'Ngừng bán' },
+  { code: 'drop',    level: 'bad',  label: 'Tụt dốc' },
+  { code: 'refund',  level: 'warn', label: 'Hoàn cao' },
+  { code: 'rise',    level: 'good', label: 'Tăng mạnh' },
+];
+
+function renderAlertBar() {
+  const el = $('#c-alerts');
+  // Chon "tat ca" thi khong co ky truoc -> khong co co nao so sanh duoc. An han dai
+  // nay con hon hien 4 con so 0 trong nhu moi thu deu on.
+  const any = Object.values(ALERT_COUNTS).some(n => n > 0);
+  el.classList.toggle('hide', !any);
+  if (!any) { ALERT_FILTER = ''; return; }
+  el.innerHTML = `
+    <button class="chip-f${ALERT_FILTER ? '' : ' on'}" data-code="">Tất cả
+      <span>${CREATORS.length}</span></button>
+    ${ALERT_CHIPS.filter(c => ALERT_COUNTS[c.code]).map(c => `
+      <button class="chip-f ${c.level}${ALERT_FILTER === c.code ? ' on' : ''}" data-code="${c.code}"
+        aria-pressed="${ALERT_FILTER === c.code}">${esc(c.label)}
+        <span>${ALERT_COUNTS[c.code]}</span></button>`).join('')}
+    <span class="sub alert-why">${PERIOD
+      ? `So với ${PERIOD} ngày liền trước · tụt ≥${RULES.dropPct}%, hoàn ≥${RULES.refundPct}%,
+         chỉ tính creator kỳ trước trên ${compact.format(RULES.minGmv)}đ`
+      // Chon "tat ca" thi khong co ky truoc -> chi con luat khong can so sanh. Noi ro,
+      // thay vi de nguoi doc tuong co tut doc ma khong ai bi gan co.
+      : `Kỳ “tất cả” không có kỳ trước để so — chỉ hiện cảnh báo hoàn ≥${RULES.refundPct}%.
+         Chọn 7 hoặc 30 ngày để thấy tụt dốc / tăng mạnh.`}</span>`;
+}
+
+// So sanh voi ky truoc, ngay duoi con so. null = khong so duoc (chon "tat ca", hoac ky
+// truoc bang 0) -> khong hien gi, KHAC han hien "0%".
+function cellDelta(r, key) {
+  const d = change(r[key], r.prev?.[key]);
+  if (d === null || Math.abs(d) < 1) return '';
+  return `<div class="cd ${d >= 0 ? 'up' : 'down'}"
+    title="Kỳ trước: ${fmt(r.prev[key])}">${d >= 0 ? '▲' : '▼'}${Math.abs(d).toFixed(0)}%</div>`;
+}
+
 function renderCreators() {
   const rows = creatorRows();
-  $('#c-count').textContent = `${rows.length}/${CREATORS.length} creator`;
-  const head = CCOLS.map(c => {
+  renderAlertBar();
+  $('#c-count').textContent = ALERT_FILTER
+    ? `${rows.length} creator ${ALERT_CHIPS.find(c => c.code === ALERT_FILTER).label.toLowerCase()}`
+    : `${rows.length}/${CREATORS.length} creator`;
+  const head = `<th class="rank">#</th>` + CCOLS.map(c => {
     const on = SORT.key === c.key;
     return `<th class="${c.num ? 'num ' : ''}sortable" data-sort="${c.key}"
       aria-sort="${on ? (SORT.dir === 1 ? 'ascending' : 'descending') : 'none'}">${esc(c.label)}<span
       class="arrow">${on ? (SORT.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
   }).join('');
-  const cell = (r, c) => c.key === 'username' ? `<td>@${esc(r.username)}</td>`
-    : c.num ? `<td class="num">${fmt(r[c.key], c.unit)}</td>`
+
+  // Cot ten: avatar + co canh bao. avatar_url nam san trong creator_profiles tu lau
+  // ma chua cho nao dung den.
+  const nameCell = (r) => `<td class="who">
+    ${r.avatar_url
+      ? `<img class="av" src="${esc(r.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+      : `<span class="av ph" aria-hidden="true">${esc((r.username[0] ?? '?').toUpperCase())}</span>`}
+    <span class="who-t">@${esc(r.username)}
+      ${r.alerts.length ? `<span class="flags">${r.alerts.map(a =>
+        `<span class="flag ${a.level}" title="${esc(a.text)}">${esc(a.text)}</span>`).join('')}</span>` : ''}
+    </span></td>`;
+
+  const cell = (r, c) => c.key === 'username' ? nameCell(r)
+    : c.num ? `<td class="num">${fmt(r[c.key], c.unit)}${c.delta ? cellDelta(r, c.key) : ''}</td>`
     : `<td>${d2(r[c.key])}</td>`;
   const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
+
   $('#t-creators').innerHTML = `
     <thead><tr>${head}</tr></thead>
-    <tbody>${rows.length ? rows.map(r => `<tr>${CCOLS.map(c => cell(r, c)).join('')}</tr>`).join('')
-      : `<tr><td colspan="${CCOLS.length}" class="empty">Không có creator nào khớp “${esc($('#c-q').value)}”.</td></tr>`}</tbody>
-    ${rows.length ? `<tfoot><tr>${CCOLS.map((c, i) =>
+    <tbody>${rows.length ? rows.map((r, i) => {
+      const w = worst(r.alerts);
+      // Xep hang theo CHINH cot dang sort, nen doi cot sort la thu tu # doi theo.
+      return `<tr class="${w ? 'row-' + w.level : ''}"><td class="rank">${i + 1}</td>${
+        CCOLS.map(c => cell(r, c)).join('')}</tr>`;
+    }).join('')
+      : `<tr><td colspan="${CCOLS.length + 1}" class="empty">${
+          ALERT_FILTER ? 'Không creator nào trong nhóm này.'
+                       : `Không có creator nào khớp “${esc($('#c-q').value)}”.`}</td></tr>`}</tbody>
+    ${rows.length ? `<tfoot><tr><td></td>${CCOLS.map((c, i) =>
       i === 0 ? `<td>Tổng ${rows.length} creator</td>`
       : SUMMABLE.has(c.key) ? `<td class="num">${fmt(sum(c.key))}</td>` : '<td></td>').join('')}</tr></tfoot>` : ''}`;
 }
@@ -295,7 +365,7 @@ function exportCsv() {
 // da bi loai ngay trong SQL (VALID_ROW), nen con so cong lai bang dung net_gmv chu khong
 // phai gmv gop. Vi vay cot phai goi la 'GMV thuc' -- giong nhan o bang Creator. Goi no la
 // 'GMV' nhu truoc thi hai tab hien hai so khac nhau duoi cung mot ten.
-let PRODUCTS = { products: [], shops: [], byContentType: [] };
+let PRODUCTS = { products: [], shops: [], byContentType: [], coverage: null };
 let PVIEW = 'products';
 let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } };
 
@@ -359,6 +429,20 @@ function renderShare() {
     }).join('')}</div>`;
 }
 
+// Bang nay doc tu sku_orders, con KPI/creator doc tu metric_values. Hai bang khong phu
+// cung mot khoang ngay: nhung ngay keo bang ban sync cu co metric ma khong co dong tho.
+// Khi do noi THANG ra, thay vi de nguoi dung thay bang rong va tuong la khong co don.
+function missingRawNote() {
+  const c = PRODUCTS.coverage;
+  if (!c || c.rows_in_window) return '';
+  if (!c.newest_raw) {
+    return 'Chưa có dòng thô nào. Bảng này chỉ có dữ liệu từ lần kéo sau khi bật lưu dòng thô.';
+  }
+  return `Không có dòng thô nào trong kỳ này. Dòng thô mới nhất là <b>${esc(c.newest_raw)}</b>,
+    trong khi số liệu creator đã tới <b>${esc(c.anchor)}</b> — những ngày ở giữa được kéo bằng
+    bản sync cũ (chỉ ghi metric, chưa ghi dòng thô). Kéo lại các ngày đó thì bảng này đầy lại.`;
+}
+
 function renderContentCards() {
   const rows = PRODUCTS.byContentType;
   const total = rows.reduce((t, r) => t + Number(r.gmv || 0), 0);
@@ -370,7 +454,7 @@ function renderContentCards() {
         <span class="muted">${vnd.format(r.orders)} đơn</span></div>
       <p class="why">${vnd.format(r.contents)} nội dung · ${vnd.format(r.creators)} creator</p>
     </div>`).join('')
-    : '<p class="sub">Chưa có dòng thô nào. Bảng này chỉ có dữ liệu từ lần kéo sau khi bật lưu dòng thô.</p>';
+    : `<p class="sub">${missingRawNote()}</p>`;
 }
 
 function renderProducts() {
@@ -399,7 +483,8 @@ function renderProducts() {
     <tbody>${rows.length ? rows.map(r => `<tr>${cols.map(c => cell(r, c)).join('')}</tr>`).join('')
       : `<tr><td colspan="${cols.length}" class="empty">${all
         ? `Không có gì khớp “${esc($('#p-q').value)}”.`
-        : 'Chưa có dòng thô nào trong kỳ này.'}</td></tr>`}</tbody>
+        // Ly do day du da nam o khoi the ben tren; nhac lai nguyen van o day chi lam on.
+        : 'Không có dòng thô nào trong kỳ này — xem giải thích ở trên.'}</td></tr>`}</tbody>
     ${rows.length ? `<tfoot><tr>${cols.map((c, i) =>
       i === 0 ? `<td>Tổng ${rows.length}</td>`
       : PSUMMABLE.has(c.key) ? `<td class="num">${fmt(sum(c.key))}</td>` : '<td></td>').join('')}</tr></tfoot>` : ''}`;
@@ -524,7 +609,12 @@ function renderSystem() {
 }
 
 async function loadCreators() {
-  CREATORS = await get(`/api/creators${PERIOD ? `?days=${PERIOD}` : ''}`);
+  const raw = await get(`/api/creators${PERIOD ? `?days=${PERIOD}` : ''}`);
+  // Gan co MOT lan o day, khong phai moi lan render: bang nay render lai theo tung phim
+  // go vao o tim kiem.
+  const { rows, counts } = summarize(raw);
+  CREATORS = rows;
+  ALERT_COUNTS = counts;
   renderCreators();
 }
 
@@ -737,10 +827,17 @@ $('#creator-drill').addEventListener('click', (e) => {
   if (e.target.closest('#drill-close')) { DRILL = null; $('#creator-drill').innerHTML = ''; }
 });
 
+$('#c-alerts').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip-f'); if (!b) return;
+  ALERT_FILTER = b.dataset.code;
+  renderCreators();
+});
+
 $('#t-creators').addEventListener('click', (e) => {
   const td = e.target.closest('tbody td');
-  if (td) {
-    const name = td.closest('tr')?.querySelector('td')?.textContent?.replace(/^@/, '');
+  if (td && !td.closest('tr')?.querySelector('.empty')) {
+    // Lay username tu o .who chu khong phai o dau tien: o dau tien gio la so thu tu.
+    const name = td.closest('tr')?.querySelector('.who-t')?.textContent?.trim().split(/\s/)[0]?.replace(/^@/, '');
     if (name) openDrill(name);
     return;
   }

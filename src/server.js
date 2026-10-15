@@ -280,27 +280,48 @@ app.get('/api/creators', async (req, res, next) => {
     // Cung mot bo chon ky voi KPI va bieu do -- truoc day bang nay luon cong TOAN BO
     // lich su trong khi KPI chi lay ngay moi nhat, hai cho noi hai ky khac nhau.
     const days = Number(req.query.days) || null;
+    // Ky NAY va ky TRUOC trong cung mot cau lenh. Khong co ky truoc thi khong noi duoc
+    // creator nao dang tut doc -- ma do la cau hoi dau tien khi mo bang nay moi sang.
+    // Chon "tat ca" thi khong co ky truoc de so: prev_* = 0 va giao dien an cot thay doi.
+    const CUR  = `($1::int is null or v.period_start > ${ORDER_DAY} - $1::int)`;
+    const PREV = `($1::int is not null
+                   and v.period_start >  ${ORDER_DAY} - 2 * $1::int
+                   and v.period_start <= ${ORDER_DAY} - $1::int)`;
+    // Mot metric, hai ky -> hai cot. Viet tay 8 cap la 16 dong gan giong nhau, va sua
+    // mot cai quen cai kia; sinh ra tu danh sach thi khong lech duoc.
+    const SUMS = ['gmv', 'net_gmv', 'orders', 'items_sold',
+                  'est_commission', 'commission_base', 'refund_amount', 'refund_orders'];
+    const col = (k, when, as) =>
+      `coalesce(sum(v.value) filter (where v.metric_key='${k}' and ${when}),0)::float ${as}`;
+
     // Pivot toan bo metric ra cot thay vi chi 3 cai. Ty le phai tinh lai tu metric goc:
     // cong aov / commission_rate / refund_rate cua nhieu ngay lai la vo nghia.
     const { rows } = await q(
       `select c.username, c.first_seen::text first_seen, c.last_seen::text last_seen,
-              max(v.period_start)::text last_period,
-              count(distinct v.period_start)::int days,
-              coalesce(sum(v.value) filter (where v.metric_key='gmv'),0)::float gmv,
-              coalesce(sum(v.value) filter (where v.metric_key='net_gmv'),0)::float net_gmv,
-              coalesce(sum(v.value) filter (where v.metric_key='orders'),0)::float orders,
-              coalesce(sum(v.value) filter (where v.metric_key='items_sold'),0)::float items_sold,
-              coalesce(sum(v.value) filter (where v.metric_key='est_commission'),0)::float est_commission,
-              coalesce(sum(v.value) filter (where v.metric_key='commission_base'),0)::float commission_base,
-              coalesce(sum(v.value) filter (where v.metric_key='refund_amount'),0)::float refund_amount,
-              coalesce(sum(v.value) filter (where v.metric_key='refund_orders'),0)::float refund_orders
-       from creators c left join metric_values v on v.creator_username = c.username
-         and ($1::int is null or v.period_start > ${ORDER_DAY} - $1::int)
-       group by c.username, c.first_seen, c.last_seen`,
+              max(v.period_start) filter (where ${CUR})::text last_period,
+              count(distinct v.period_start) filter (where ${CUR})::int days,
+              ${SUMS.map(k => col(k, CUR, k)).join(',\n              ')},
+              ${SUMS.map(k => col(k, PREV, 'prev_' + k)).join(',\n              ')},
+              p.avatar_url
+       from creators c
+       left join metric_values v on v.creator_username = c.username
+         and ($1::int is null or v.period_start > ${ORDER_DAY} - 2 * $1::int)
+       -- lateral + limit 1: join thang creator_profiles se NHAN BAN cac dong
+       -- metric_values khi mot username co nhieu open_id, va moi tong o tren phinh len.
+       left join lateral (
+         select avatar_url from creator_profiles
+          where username = c.username order by collected_at desc limit 1
+       ) p on true
+       group by c.username, c.first_seen, c.last_seen, p.avatar_url`,
       [days]
     );
-    res.json(rows.map(r => ({ ...r, ...ratios(r) }))
-      .sort((a, b) => b.net_gmv - a.net_gmv));
+    res.json(rows.map(r => ({
+      ...r,
+      ...ratios(r),
+      // Ty le cua ky truoc tinh tu metric goc cua ky truoc, khong phai cong lai.
+      prev: { ...Object.fromEntries(SUMS.map(k => [k, r['prev_' + k]])),
+              ...ratios(Object.fromEntries(SUMS.map(k => [k, r['prev_' + k]]))) },
+    })).sort((a, b) => b.net_gmv - a.net_gmv));
   } catch (e) { next(e); }
 });
 
@@ -331,7 +352,14 @@ app.get('/api/products', async (req, res, next) => {
     // Tham so hoa + ep vao [1, 500]: truoc day noi suy thang vao SQL, nen ?limit=-1
     // thanh `limit -1` va tra 500 thay vi tu choi tu te.
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 500));
-    const window = `($1::int is null or "day" > (select max("day") from sku_orders) - $1::int)`;
+    // Neo vao ORDER_DAY -- CUNG mot moc voi KPI, bieu do va bang creator.
+    // Truoc day bang nay neo vao max(day) cua rieng sku_orders, ma hai bang khong bang
+    // nhau: 3 ngay 12-14/10 duoc keo boi ban sync CU, truoc khi co writeRaw, nen co
+    // metric ma khong co dong tho. Hau qua: cung nut "7 ngay" thi tab Creator hien
+    // 08-14/10 con tab San pham hien 15-21/05 -- hai tab noi hai ky khac nhau.
+    // Neo chung lam tab San pham RONG khi ky dang chon chua co dong tho; do la su that,
+    // va `coverage` duoi day de giao dien noi ro vi sao thay vi de nguoi doc tu doan.
+    const window = `($1::int is null or "day" > ${ORDER_DAY} - $1::int)`;
 
     const [products, shops, content] = await Promise.all([
       q(`select product_id, max(product_name) product_name, max(shop_name) shop_name,
@@ -364,10 +392,19 @@ app.get('/api/products', async (req, res, next) => {
          group by 1 order by gmv desc`, [days]),
     ]);
 
+    // Vi sao bang rong: thieu dong tho cho ky nay, hay that su khong co don nao?
+    // Hai chuyen khac han nhau, va chi API moi phan biet duoc.
+    const cov = await q(
+      `select max("day")::text newest_raw,
+              ${ORDER_DAY}::text anchor,
+              count(*) filter (where ${window})::int rows_in_window
+         from sku_orders`, [days]);
+
     res.json({
       products: products.rows,
       shops: shops.rows,
       byContentType: content.rows,
+      coverage: cov.rows[0],
     });
   } catch (e) { next(e); }
 });

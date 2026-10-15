@@ -448,3 +448,61 @@ td.wide, td.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowra
 @media (max-width: 767px) {
   .share-seg:not(.s0) { font-size: 0; }
 }
+
+/* ===== Xếp hạng + cảnh báo creator ===== */
+/* Mau dung lai dung bo da co o tren (.tag, .delta): do = xau, vang = canh bao,
+ * xanh = tot. Khong tu che thang mau moi. */
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.chip-f {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface-card);
+  color: var(--color--neutral--700);
+  font: inherit; font-size: var(--small--font-size); line-height: 1.2;
+}
+.chip-f:hover { border-color: var(--color--neutral--400); }
+.chip-f span {
+  min-width: 1.4em; padding: 0 5px; border-radius: 999px; text-align: center;
+  background: var(--surface-subtle); font-variant-numeric: tabular-nums; font-size: .78rem;
+}
+.chip-f[aria-pressed="true"], .chip-f.on { border-color: currentColor; font-weight: 500; }
+.chip-f.bad  { color: var(--color--red--200); }
+.chip-f.warn { color: var(--color--yellow--200); }
+.chip-f.good { color: var(--color--green--300); }
+.chip-f.bad span  { background: var(--color--red--50); }
+.chip-f.warn span { background: var(--color--yellow--50); }
+.chip-f.good span { background: var(--color--green--100); }
+.alert-why { margin-left: 4px; }
+
+/* Cot so thu tu: di theo cot dang sort, nen doi cot sort la thu tu doi theo. */
+th.rank, td.rank {
+  width: 1%; padding-right: 4px; text-align: right;
+  color: var(--color--neutral--500); font-variant-numeric: tabular-nums;
+}
+
+/* Cot ten: avatar (da nam san trong creator_profiles) + co canh bao. */
+td.who { display: flex; align-items: center; gap: 9px; }
+.av {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  object-fit: cover; background: var(--surface-subtle);
+}
+.av.ph {
+  display: grid; place-items: center;
+  color: var(--color--neutral--500); font-size: .78rem; font-weight: 600;
+}
+.who-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.flags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.flag { padding: 1px 7px; border-radius: 999px; font-size: .72rem; white-space: nowrap; }
+.flag.bad  { background: var(--color--red--50);     color: #b91c1c; }
+.flag.warn { background: var(--color--yellow--50);  color: var(--color--yellow--200); }
+.flag.good { background: var(--color--green--100);  color: #047857; }
+
+/* Thay doi so voi ky truoc, ngay duoi con so. Khong so duoc thi KHONG hien gi. */
+.cd { font-size: .72rem; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.cd.up   { color: #047857; }
+.cd.down { color: #b91c1c; }
+
+/* Dong co co: mot vet mau o mep trai -- du thay khi luot ma khong lam bang loe loet. */
+tbody tr.row-bad  td.rank { box-shadow: inset 3px 0 0 var(--color--red--200); }
+tbody tr.row-warn td.rank { box-shadow: inset 3px 0 0 var(--color--yellow--100); }
+tbody tr.row-good td.rank { box-shadow: inset 3px 0 0 var(--color--green--200); }
