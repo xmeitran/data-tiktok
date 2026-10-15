@@ -4,3 +4,4 @@ node_modules/
 # Playwright MCP chup man hinh / snapshot khi kiem giao dien
 .playwright-mcp/
 *.png
+backfill.log
