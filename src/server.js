@@ -140,6 +140,31 @@ app.get('/api/summary', async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Chuoi theo NGAY cho bieu do xu huong. metric_values luu moi dong 1 creator/1 ngay,
+// nen cong lai theo ngay. Bo cac metric ty le ra: khong cong duoc, phai tinh lai tu goc.
+app.get('/api/daily', async (_req, res, next) => {
+  try {
+    const { rows } = await q(
+      `select period_start::text as "day", metric_key, sum(value)::float as total
+       from metric_values
+       where metric_key not in ('aov','commission_rate','refund_rate')
+       group by period_start, metric_key
+       order by period_start`
+    );
+    const byDay = new Map();
+    for (const r of rows) {
+      if (!byDay.has(r.day)) byDay.set(r.day, { day: r.day });
+      byDay.get(r.day)[r.metric_key] = r.total;
+    }
+    res.json([...byDay.values()].map(d => ({
+      ...d,
+      aov: d.orders ? d.gmv / d.orders : 0,
+      commission_rate: d.gmv ? (d.est_commission / d.gmv) * 100 : 0,
+      refund_rate: d.gmv ? (d.refund_amount / d.gmv) * 100 : 0,
+    })));
+  } catch (e) { next(e); }
+});
+
 app.get('/api/creators', async (_req, res, next) => {
   try {
     const { rows } = await q(

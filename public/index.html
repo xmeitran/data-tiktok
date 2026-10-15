@@ -17,43 +17,69 @@
     <nav id="nav">
       <button data-tab="tong-quan" aria-current="page">Tổng quan</button>
       <button data-tab="creator">Creator</button>
-      <button data-tab="bang-metric">Bảng metric</button>
-      <button data-tab="wiki">Wiki metric</button>
+      <button data-tab="metric">Metric</button>
     </nav>
   </div>
 </header>
 
 <main class="wrap">
   <section id="tab-tong-quan">
-    <h1>Tổng quan uỷ quyền</h1>
+    <h1>Tổng quan</h1>
     <p class="sub" id="sync-note">Đang tải…</p>
+
     <div class="grid" id="kpis"></div>
-    <div class="row" style="margin-top:20px">
-      <button class="btn" id="btn-sync">Kéo dữ liệu 7 ngày</button>
-      <button class="btn ghost" id="btn-link">Lấy link uỷ quyền</button>
-      <span id="link-out"></span>
+
+    <div class="card chart-card">
+      <div class="chart-head">
+        <h2>Xu hướng theo ngày</h2>
+        <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
+      </div>
+      <div id="chart"></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>Top creator theo GMV thực</h2>
+        <table id="t-top"></table>
+      </div>
+      <div class="card">
+        <h2>Kéo dữ liệu</h2>
+        <p class="sub" style="margin-bottom:16px">Mỗi ngày khoảng 88 lượt gọi API, kéo nhiều ngày sẽ lâu.</p>
+        <div class="row">
+          <select id="sync-days" aria-label="Số ngày cần kéo">
+            <option value="1">1 ngày</option>
+            <option value="3" selected>3 ngày</option>
+            <option value="7">7 ngày</option>
+            <option value="30">30 ngày</option>
+          </select>
+          <button class="btn" id="btn-sync">Kéo dữ liệu</button>
+        </div>
+        <div class="row" style="margin-top:16px">
+          <button class="btn ghost" id="btn-link">Lấy link uỷ quyền partner</button>
+        </div>
+        <div id="link-out"></div>
+      </div>
     </div>
   </section>
 
   <section id="tab-creator" class="hide">
-    <h1>Creator đã uỷ quyền</h1>
-    <p class="sub">Trạng thái token và kết quả mới nhất của từng creator.</p>
+    <h1>Creator</h1>
+    <p class="sub">Creator có phát sinh đơn trong các kỳ đã kéo. Không phải toàn bộ creator đang bind.</p>
+
+    <div class="toolbar">
+      <div class="search">
+        <input type="search" id="c-q" placeholder="Tìm theo username…" aria-label="Tìm creator" autocomplete="off">
+        <kbd>/</kbd>
+      </div>
+      <span class="count" id="c-count" aria-live="polite"></span>
+    </div>
+
     <div class="card table-card"><table id="t-creators"></table></div>
   </section>
 
-  <section id="tab-bang-metric" class="hide">
-    <h1>Danh sách metric</h1>
-    <p class="sub">Toàn bộ metric hệ thống theo dõi, kèm nguồn dữ liệu và trạng thái pipeline.</p>
-    <div class="row" style="margin-bottom:16px">
-      <select id="f-group"><option value="">Tất cả nhóm</option></select>
-      <input type="search" id="f-q" placeholder="Tìm metric…">
-    </div>
-    <div class="card table-card"><table id="t-metrics"></table></div>
-  </section>
-
-  <section id="tab-wiki" class="hide">
-    <h1>Wiki metric</h1>
-    <p class="sub">Định nghĩa, công thức, nguồn và bẫy thường gặp của từng chỉ số.</p>
+  <section id="tab-metric" class="hide">
+    <h1>Metric</h1>
+    <p class="sub">Toàn bộ chỉ số hệ thống theo dõi: định nghĩa, công thức, nguồn và bẫy thường gặp.</p>
 
     <div class="toolbar">
       <div class="search">
