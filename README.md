@@ -126,6 +126,27 @@ sẵn ở mục Redirect URL rồi nên không phát sinh thêm ràng buộc.
 Đổi mật khẩu: sửa `.env`, restart. Trình duyệt nhớ credential tới khi đóng hẳn — không có nút
 đăng xuất.
 
+## Nhịp tim cho job đồng bộ
+
+Tiến trình bị `SIGKILL` / mất điện / đóng máy không chạy được handler nào nên không thể tự
+đánh dấu là hỏng. Hậu quả từng gặp thật: dòng `sync_runs` kẹt `running` vĩnh viễn trong khi
+job đã chết, và dashboard hiện y hệt lúc đang chạy ngon.
+
+Cách xử: để Postgres phán xử theo thời gian thay vì chờ tiến trình tự khai báo.
+
+- Job còn sống thì đập nhịp (`beat()`) sau **mỗi ngày** kéo xong, kể cả ngày lỗi.
+- `reapStale()` đánh dấu `error` cho run im lặng quá `SYNC_STALE_MINUTES` (mặc định 15).
+- Gọi trước mỗi lần chạy mới và trước mỗi lần đọc `/api/summary`, `/api/system` — đọc trạng
+  thái là lúc dễ phát hiện job chết nhất.
+
+**Run không có nhịp thì KHÔNG bị thu dọn.** Một run do code cũ sinh ra không phân biệt được
+"đang chạy" với "đã chết", mà giết nhầm một backfill 7 tiếng đang chạy thật thì tệ hơn nhiều
+so với để một dòng kẹt `running`. Đổi lại: run cũ nào chết thật sẽ kẹt `running` mãi, phải dọn
+tay một lần. Từ bản này trở đi mọi run đều có nhịp nên không phát sinh thêm.
+
+`node test-runs.mjs` phủ: quá ngưỡng thì dọn, còn nhịp thì tha, không nhịp thì miễn, đập nhịp
+cứu được run sắp bị coi là chết, ghi chú cũ không bị ghi đè, dọn hai lần không nhân đôi.
+
 ## Giới hạn đã biết
 
 - `access_token` đang lưu plaintext trong Postgres. Production nên mã hoá ở tầng cột
@@ -152,6 +173,8 @@ sẵn ở mục Redirect URL rồi nên không phát sinh thêm ràng buộc.
 - 6 metric chưa nối API (`creators_authorized`, `live_ctr`, `live_ctor`, `video_count`,
   `live_count`, `sample_requests`) — hiện trạng thái "Chưa kéo" trong bảng.
 - Chưa có webhook nhận sự kiện huỷ uỷ quyền; phát hiện gián tiếp khi refresh token thất bại.
+- `reapStale()` chỉ chạy khi có người mở dashboard hoặc khởi động lần chạy mới. Không ai mở thì
+  không ai dọn — đủ cho nhu cầu hiện tại, nhưng không phải cảnh báo chủ động.
 - `creator_username` là khoá chính của creator. TikTok đang chuyển sang Creator Open ID làm khoá
   từ bản 202509, mà `cap_order` chưa trả trường đó — sẽ phải migrate khi TikTok mở.
 - Đăng nhập là **một mật khẩu dùng chung**, không phân tài khoản nên không biết ai đã xem gì.

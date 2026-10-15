@@ -1,4 +1,4 @@
-import { q } from './db.js';
+import { q, beat, reapStale } from './db.js';
 import { call, refreshToken } from './tiktok.js';
 
 // "Search CAP Affiliate Orders" v202603 -- dong duy nhat cua package "Read CAP earnings order"
@@ -282,7 +282,10 @@ export async function runSync({ days = 7, skipExisting = false } = {}) {
   // Tran 92 ngay cua TikTok la cho MOI REQUEST. Ta goi tung ngay mot (1 ngay/request)
   // nen keo bao nhieu ngay cung duoc; chi can moi request nam trong 1 ngay.
 
-  const run = await q(`insert into sync_runs default values returning id`);
+  // Thu don xac cua lan chay truoc truoc khi mo run moi, neu khong dashboard van
+  // thay dong 'running' cu va tuong job kia con song.
+  await reapStale();
+  const run = await q(`insert into sync_runs (heartbeat_at) values (now()) returning id`);
   const runId = run.rows[0].id;
   const errors = [];
   const warnings = [];
@@ -314,6 +317,8 @@ export async function runSync({ days = 7, skipExisting = false } = {}) {
         await writeRaw(dayStr, rows);
         written += await writeDay(dayStr, byCreator);
       } catch (e) { errors.push(`${dayStr}: ${e.message}`); }
+      // Dap nhip sau MOI ngay, ke ca ngay loi: job van song, chi la ngay do hong.
+      await beat(runId);
     }
 
     if (skipped) warnings.unshift(`bo qua ${skipped} ngay da co du lieu`);

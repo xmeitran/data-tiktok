@@ -8,13 +8,14 @@
     "initdb": "psql \"$DATABASE_URL\" -f db/schema.sql",
     "sync": "node -e \"import('./src/sync.js').then(m=>m.runSync({days:Number(process.argv[1])||7})).then(r=>console.log(r))\" --",
     "dump": "node dump-orders.mjs",
-    "test": "npm run check:js && node test-aggregate.mjs && node test-auth.mjs && node test-creator.mjs",
+    "test": "npm run check:js && node test-aggregate.mjs && node test-auth.mjs && node test-creator.mjs && node test-runs.mjs",
     "test:docs": "node test-docs.mjs",
     "check:js": "cp public/app.js /tmp/_app_check.mjs && node --check /tmp/_app_check.mjs && echo \"app.js OK (module/strict)\"",
     "test:live": "node test-live.mjs",
     "test:raw": "node test-raw.mjs",
     "test:creator": "node test-creator.mjs",
-    "sync:creator": "node -e \"import('./src/sync-creator.js').then(m=>m.runCreatorSync()).then(r=>console.log(r))\""
+    "sync:creator": "node -e \"import('./src/sync-creator.js').then(m=>m.runCreatorSync()).then(r=>console.log(r))\"",
+    "test:runs": "node test-runs.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

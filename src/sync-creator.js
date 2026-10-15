@@ -5,7 +5,7 @@
 // Khac sync.js o mot diem co ban: cap_order co create_time nen chia theo NGAY duoc,
 // con 3 endpoint duoi KHONG co thoi diem tao -> moi lan chay la mot ANH CHUP (snapshot_day).
 // Vi vay dung goi runCreatorSync nhieu lan trong ngay roi coi la chuoi thoi gian.
-import { q } from './db.js';
+import { q, beat, reapStale } from './db.js';
 import { call, refreshToken } from './tiktok.js';
 import { CREATOR_API } from './tiktok-fields.js';
 
@@ -224,7 +224,9 @@ async function writeMetrics(username, dayStr, metrics) {
 // (cap_order chi tra ve creator_username, khong co open_id), nen bo qua creator do.
 export async function runCreatorSync({ onDay = new Date() } = {}) {
   const dayStr = day(onDay);
-  const run = await q(`insert into sync_runs (note) values ('creator sync') returning id`);
+  await reapStale();
+  const run = await q(
+    `insert into sync_runs (note, heartbeat_at) values ('creator sync', now()) returning id`);
   const runId = run.rows[0].id;
   const errors = [];
   const warnings = [];
@@ -267,6 +269,7 @@ export async function runCreatorSync({ onDay = new Date() } = {}) {
         aggregateCreator({ samples, showcase, collaborations }));
       creators++;
     } catch (e) { errors.push(`${row.open_id}: ${e.message}`); }
+    await beat(runId);
   }
 
   const note = ['creator sync', ...errors, ...warnings].join(' | ');

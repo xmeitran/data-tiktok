@@ -199,3 +199,7 @@ create table if not exists auth_states (
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
+
+-- Nhip tim: job con song thi dap nhip, qua STALE_MINUTES khong co nhip thi reapStale()
+-- danh dau 'error'. Them sau nen de nullable; run cu khong co nhip thi tinh theo started_at.
+alter table sync_runs add column if not exists heartbeat_at timestamptz;

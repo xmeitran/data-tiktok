@@ -3,7 +3,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { q } from './db.js';
+import { q, reapStale } from './db.js';
 import { METRICS } from './metrics.js';
 import { API, REQUEST, FIELDS, CATEGORY_ASSET_FIELDS,
          CREATOR_API, CREATOR_FIELDS } from './tiktok-fields.js';
@@ -200,6 +200,8 @@ app.get('/api/fields', (_req, res) =>
 
 app.get('/api/summary', async (_req, res, next) => {
   try {
+    // Doc trang thai = co hoi tot nhat de phat hien job da chet; thu don truoc khi doc.
+    await reapStale();
     const [auth, last] = await Promise.all([
       q(`select status, count(*)::int n from authorizations where role='partner' group by status`),
       q(`select * from sync_runs order by id desc limit 1`),
@@ -359,6 +361,7 @@ app.get('/api/products', async (req, res, next) => {
 
 app.get('/api/system', async (_req, res, next) => {
   try {
+    await reapStale();
     const [auth, assets, runs, span] = await Promise.all([
       q(`select open_id, role, status, authorized_at, access_expire_at, refresh_expire_at,
                 raw->'granted_scopes' granted_scopes, raw->>'user_type' user_type
