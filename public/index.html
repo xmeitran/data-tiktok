@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikTok Partner Metrics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">TikTok Partner Metrics<span class="dot">.</span></div>
+    <nav id="nav">
+      <button data-tab="tong-quan" aria-current="page">Tổng quan</button>
+      <button data-tab="creator">Creator</button>
+      <button data-tab="bang-metric">Bảng metric</button>
+      <button data-tab="wiki">Wiki metric</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="tab-tong-quan">
+    <h1>Tổng quan uỷ quyền</h1>
+    <p class="sub" id="sync-note">Đang tải…</p>
+    <div class="grid" id="kpis"></div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" id="btn-sync">Kéo dữ liệu 7 ngày</button>
+      <button class="btn ghost" id="btn-link">Lấy link uỷ quyền</button>
+      <span id="link-out"></span>
+    </div>
+  </section>
+
+  <section id="tab-creator" class="hide">
+    <h1>Creator đã uỷ quyền</h1>
+    <p class="sub">Trạng thái token và kết quả mới nhất của từng creator.</p>
+    <div class="card table-card"><table id="t-creators"></table></div>
+  </section>
+
+  <section id="tab-bang-metric" class="hide">
+    <h1>Danh sách metric</h1>
+    <p class="sub">Toàn bộ metric hệ thống theo dõi, kèm nguồn dữ liệu và trạng thái pipeline.</p>
+    <div class="row" style="margin-bottom:16px">
+      <select id="f-group"><option value="">Tất cả nhóm</option></select>
+      <input type="search" id="f-q" placeholder="Tìm metric…">
+    </div>
+    <div class="card table-card"><table id="t-metrics"></table></div>
+  </section>
+
+  <section id="tab-wiki" class="hide">
+    <h1>Wiki metric</h1>
+    <p class="sub">Định nghĩa, công thức, nguồn và bẫy thường gặp của từng chỉ số.</p>
+    <div class="wiki" id="wiki"></div>
+  </section>
+</main>
+
+<footer class="wrap">Dữ liệu từ TikTok Shop Partner Open API · lưu tại Postgres · giao diện theo token UpBase.</footer>
+<script src="app.js" type="module"></script>
+</body>
+</html>
