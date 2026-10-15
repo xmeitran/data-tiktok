@@ -67,8 +67,11 @@ assert.equal(a.net_gmv, 191992);
 assert.equal(a.items_sold, 3, '1 + 2, don huy khong tinh');
 assert.equal(a.est_commission, 14719 + 16000, 'don huy khong tinh hoa hong');
 assert.equal(a.commission_base, 91992 + 100000);
-assert.equal(a.aov, 221992, 'gmv / orders');
+// AOV phai dung CUNG CO SO: gmv gom ca don huy nen mau so la TONG don (1 hop le + 1 huy).
+assert.equal(a.aov, 110996, 'gmv / (orders + refund_orders), KHONG phai gmv/orders');
+assert.notEqual(a.aov, a.gmv / a.orders, 'khong duoc chia cho rieng don hop le');
 assert.equal(a.creators_active, 1);
+assert.equal(a.refund_orders, 1, 'don INELIGIBLE duoc dem la don huy');
 
 const b = byCreator.get('creator_b');
 assert.equal(b.orders, 1, "fully_return='Yes' khong dem la don");
@@ -77,6 +80,7 @@ assert.equal(b.refund_amount, 20000);
 assert.equal(b.items_sold, 3);
 assert.equal(b.est_commission, 4800 + 200, 'cong ca estimated_bonus_commission');
 assert.equal(Number(b.refund_rate.toFixed(2)), 40);
+assert.equal(b.refund_orders, 0, "fully_return='Yes' tren don SETTLED KHONG phai don huy ca don");
 
 // Creator khong co don hop le van duoc ghi nhan la da thay
 const only = aggregate([
@@ -85,7 +89,11 @@ const only = aggregate([
 ]).byCreator.get('creator_c');
 assert.equal(only.creators_seen, 1);
 assert.equal(only.creators_active, 0, 'thay nhung khong co don hop le');
-assert.equal(only.aov, 0, 'khong chia cho 0');
+// Don bi huy VAN la mot don da dat, co gia tri -> AOV = 1000, khong phai 0.
+// Trang thai "toan don huy" the hien o orders = 0 va refund_rate = 100%, khong phai o AOV.
+assert.equal(only.aov, 1000, 'AOV tinh tren TONG don, don huy van co gia tri');
+assert.equal(only.orders, 0, 'khong co don hop le nao');
+assert.equal(only.refund_orders, 1, 'chi co don huy van dem duoc');
 
 // Tron currency thi tong tien vo nghia -> phai canh bao
 const mixed = aggregate([
@@ -96,5 +104,35 @@ assert.match(mixed.warnings.join(' '), /tron nhieu currency/);
 
 assert.equal(aggregate([]).byCreator.size, 0);
 assert.equal(aggregate(undefined).byCreator.size, 0);
+
+// --- Cac chieu san pham / shop / video / live (content_type = LIVE | VIDEO | SHOP).
+// Da do tren du lieu that: 100% dong co product_id, product_name, shop_name, content_type.
+const dim = aggregate([
+  // 1 don, 2 dong SKU: 2 san pham khac nhau, cung 1 video
+  row({ id: 'd1', creator_username: 'e', settle_status: 'PENDING', content_type: 'VIDEO', content_id: 'v1',
+        product_id: 'p1', shop_name: 'Shop 1', price: M(100), quantity: 1,
+        estimated_commission_base: M(100), estimated_standard_commission: M(10) }),
+  row({ id: 'd1', sku_id: 's2', creator_username: 'e', settle_status: 'PENDING', content_type: 'VIDEO', content_id: 'v1',
+        product_id: 'p2', shop_name: 'Shop 1', price: M(100), quantity: 1,
+        estimated_commission_base: M(100), estimated_standard_commission: M(10) }),
+  // don khac, cung san pham p1 nhung tu 1 buoi live va shop khac
+  row({ id: 'd2', creator_username: 'e', settle_status: 'PENDING', content_type: 'LIVE', content_id: 'l1',
+        product_id: 'p1', shop_name: 'Shop 2', price: M(100), quantity: 1,
+        estimated_commission_base: M(100), estimated_standard_commission: M(10) }),
+  // content_type SHOP: khong phai video cung khong phai live
+  row({ id: 'd3', creator_username: 'e', settle_status: 'PENDING', content_type: 'SHOP', content_id: 'c1',
+        product_id: 'p3', shop_name: 'Shop 2', price: M(100), quantity: 1,
+        estimated_commission_base: M(100), estimated_standard_commission: M(10) }),
+  // don bi huy: KHONG duoc tinh vao bat ky chieu nao (cung co so voi `orders`)
+  row({ id: 'd4', creator_username: 'e', settle_status: 'INELIGIBLE', content_type: 'VIDEO', content_id: 'v-huy',
+        product_id: 'p-huy', shop_name: 'Shop huy', price: M(100), quantity: 1,
+        estimated_commission_base: M(100), estimated_standard_commission: M(10) }),
+]).byCreator.get('e');
+
+assert.equal(dim.products_sold, 3, 'p1 lap lai o 2 don -> dem 1 lan; p-huy bi loai');
+assert.equal(dim.shops_sold, 2, 'Shop 1 + Shop 2; Shop huy bi loai');
+assert.equal(dim.videos_with_orders, 1, 'v1 xuat hien o 2 dong SKU -> 1 video; v-huy bi loai');
+assert.equal(dim.lives_with_orders, 1);
+assert.equal(dim.orders, 3, 'd1,d2,d3 hop le; d4 huy');
 
 console.log('aggregate OK');

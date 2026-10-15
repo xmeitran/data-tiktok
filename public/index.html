@@ -11,101 +11,156 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <div class="wrap bar">
-    <div class="brand">TikTok Partner Metrics<span class="dot">.</span></div>
+<div class="app">
+  <aside class="side">
+    <div class="side-brand">TikTok Partner<span class="dot">.</span><br><small>Metrics cho MCN</small></div>
     <nav id="nav">
-      <button data-tab="tong-quan" aria-current="page">Tổng quan</button>
-      <button data-tab="creator">Creator</button>
-      <button data-tab="metric">Metric</button>
+      <button data-tab="hieu-suat" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h5v8H3zM10 3h5v18h-5zM17 9h5v12h-5z"/></svg><span>Hiệu suất</span></button>
+      <button data-tab="creator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0z"/></svg><span>Creator</span></button>
+      <button data-tab="san-pham"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6.5v11L12 22l9-4.5v-11L12 2zm0 2.3 6.4 3.2L12 10.7 5.6 7.5 12 4.3zM5 9.3l6 3v7.1l-6-3V9.3zm8 10.1v-7.1l6-3v7.1l-6 3z"/></svg><span>Sản phẩm</span></button>
+      <button data-tab="chi-so"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2H4zM4 11h16v2H4zM4 18h10v2H4z"/></svg><span>Chỉ số</span></button>
+      <button data-tab="he-thong"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4a9 9 0 0 1-.1 1.3l2 1.6-2 3.4-2.4-.9a9 9 0 0 1-2.2 1.3l-.4 2.5h-4l-.4-2.5a9 9 0 0 1-2.2-1.3l-2.4.9-2-3.4 2-1.6a9 9 0 0 1 0-2.6l-2-1.6 2-3.4 2.4.9a9 9 0 0 1 2.2-1.3L10 2h4l.4 2.5a9 9 0 0 1 2.2 1.3l2.4-.9 2 3.4-2 1.6c.06.43.1.86.1 1.3z"/></svg><span>Hệ thống</span></button>
     </nav>
-  </div>
-</header>
+    <div class="side-foot" id="side-foot"></div>
+  </aside>
 
-<main class="wrap">
-  <section id="tab-tong-quan">
-    <h1>Tổng quan</h1>
-    <p class="sub" id="sync-note">Đang tải…</p>
-
-    <div class="grid" id="kpis"></div>
-
-    <div class="card chart-card">
-      <div class="chart-head">
-        <h2>Xu hướng theo ngày</h2>
-        <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
+  <main>
+    <div class="topbar">
+      <div class="crumb" id="crumb">Hiệu suất</div>
+      <div class="seg period" id="period" role="group" aria-label="Khoảng thời gian">
+        <button data-days="1">1 ngày</button>
+        <button data-days="7" aria-pressed="true">7 ngày</button>
+        <button data-days="30">30 ngày</button>
+        <button data-days="">Tất cả</button>
       </div>
-      <div id="chart"></div>
+      <span class="fresh" id="fresh"></span>
     </div>
 
-    <div class="two-col">
-      <div class="card">
-        <h2>Top creator theo GMV thực</h2>
-        <table id="t-top"></table>
-      </div>
-      <div class="card">
-        <h2>Kéo dữ liệu</h2>
-        <p class="sub" style="margin-bottom:16px">Mỗi ngày khoảng 88 lượt gọi API, kéo nhiều ngày sẽ lâu.</p>
-        <div class="row">
-          <select id="sync-days" aria-label="Số ngày cần kéo">
-            <option value="1">1 ngày</option>
-            <option value="3" selected>3 ngày</option>
-            <option value="7">7 ngày</option>
-            <option value="30">30 ngày</option>
+    <div class="content">
+      <section id="tab-hieu-suat">
+        <div class="banner" id="sync-banner"></div>
+
+        <div class="kpis" id="kpis"></div>
+
+        <div class="card chart-card">
+          <div class="chart-head">
+            <h2>Xu hướng</h2>
+            <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
+          </div>
+          <div id="chart"></div>
+        </div>
+
+        <div class="sec-head"><h2>Chi tiết theo ngày</h2></div>
+        <div class="card table-card"><table id="t-daily"></table></div>
+
+        <div id="snap-wrap" class="hide">
+          <div class="sec-head"><h2>Ảnh chụp từ uỷ quyền creator</h2></div>
+          <p class="sub">KHÔNG phải số liệu theo kỳ: API creator không trả về thời điểm tạo,
+             nên đây là trạng thái tại <b id="snap-day">—</b>, không cộng dồn nhiều ngày được.</p>
+          <div class="kpis" id="kpis-snap"></div>
+        </div>
+
+        <div class="sec-head"><h2>Chưa lấy được</h2></div>
+        <p class="sub">Chỉ số đã định nghĩa nhưng API không trả về. Mỗi ô nói rõ vì sao.</p>
+        <div class="kpis" id="kpis-na"></div>
+
+        <div class="sec-head"><h2>Kéo dữ liệu</h2></div>
+        <div class="card">
+          <p class="sub">Mỗi ngày dữ liệu tốn khoảng 83 lượt gọi API (~30 giây). Ngày hôm nay
+             không kéo được — chỉ kéo những ngày đã khép lại.</p>
+          <div class="row">
+            <select id="sync-days" aria-label="Số ngày cần kéo">
+              <option value="1">1 ngày</option><option value="3" selected>3 ngày</option>
+              <option value="7">7 ngày</option><option value="30">30 ngày</option>
+            </select>
+            <button class="btn" id="btn-sync">Kéo dữ liệu</button>
+            <button class="btn ghost" id="btn-link" data-role="partner">Lấy link uỷ quyền partner</button>
+          </div>
+          <p class="sub">Luồng creator tách hẳn khỏi luồng partner: khác host, và creator phải
+             TỰ bấm link của chính mình. Gửi link dưới cho creator, họ bấm xong thì kéo số.</p>
+          <div class="row">
+            <button class="btn ghost" id="btn-link-creator" data-role="creator">Lấy link uỷ quyền creator</button>
+            <button class="btn ghost" id="btn-sync-creator">Kéo dữ liệu creator</button>
+          </div>
+          <div id="link-out"></div>
+        </div>
+      </section>
+
+      <section id="tab-creator" class="hide">
+        <div class="sec-head">
+          <h2>Creator</h2>
+          <button class="btn ghost sm" id="btn-export">Export CSV</button>
+        </div>
+        <p class="sub">Creator có phát sinh đơn trong kỳ đang chọn — không phải toàn bộ creator
+           đang bind với MCN. Bấm một dòng để xem diễn biến theo ngày.</p>
+        <div class="toolbar">
+          <div class="search">
+            <input type="search" id="c-q" placeholder="Tìm theo username…" aria-label="Tìm creator" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+          <span class="count" id="c-count" aria-live="polite"></span>
+        </div>
+        <div id="creator-drill"></div>
+        <div class="card table-card"><table id="t-creators"></table></div>
+      </section>
+
+      <section id="tab-san-pham" class="hide">
+        <div class="sec-head"><h2>Theo loại nội dung</h2></div>
+        <p class="sub">Đơn được quy cho định dạng nội dung sinh ra nó. Số này đọc từ bảng dòng
+           thô, đã loại đơn huỷ/hoàn — nên cộng lại đúng bằng GMV thực, không phải GMV gộp.</p>
+        <div id="p-share"></div>
+        <div class="kpis" id="p-content"></div>
+
+        <div class="sec-head">
+          <h2>Xếp hạng</h2>
+          <div class="seg" id="p-view" role="group" aria-label="Xếp hạng theo">
+            <button data-view="products" aria-pressed="true">Sản phẩm</button>
+            <button data-view="shops" aria-pressed="false">Shop</button>
+          </div>
+          <button class="btn ghost sm" id="btn-export-p">Export CSV</button>
+        </div>
+        <div class="toolbar">
+          <div class="search">
+            <input type="search" id="p-q" placeholder="Tìm tên sản phẩm, shop…"
+                   aria-label="Tìm sản phẩm hoặc shop" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+          <span class="count" id="p-count" aria-live="polite"></span>
+        </div>
+        <div class="card table-card"><table id="t-products"></table></div>
+      </section>
+
+      <section id="tab-chi-so" class="hide">
+        <div class="sec-head"><h2>Chỉ số</h2></div>
+        <p class="sub">Mỗi chỉ số: ý nghĩa, công thức dashboard tự tính, và trường API của TikTok
+           giữ nguyên văn kèm bản dịch.</p>
+        <div class="toolbar">
+          <div class="search">
+            <input type="search" id="w-q" placeholder="Tìm tên, mã, định nghĩa, công thức, nguồn…"
+                   aria-label="Tìm chỉ số" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+          <select id="w-group" aria-label="Lọc theo nhóm"><option value="">Mọi nhóm</option></select>
+          <select id="w-status" aria-label="Lọc theo pipeline">
+            <option value="">Mọi trạng thái</option><option value="1">Đã kéo</option><option value="0">Chưa kéo</option>
           </select>
-          <button class="btn" id="btn-sync">Kéo dữ liệu</button>
+          <div class="seg" id="w-view" role="group" aria-label="Kiểu hiển thị">
+            <button data-view="card" aria-pressed="true">Danh sách</button>
+            <button data-view="table" aria-pressed="false">Bảng</button>
+          </div>
+          <span class="count" id="w-count" aria-live="polite"></span>
         </div>
-        <div class="row" style="margin-top:16px">
-          <button class="btn ghost" id="btn-link">Lấy link uỷ quyền partner</button>
-        </div>
-        <div id="link-out"></div>
-      </div>
+        <div id="wiki"></div>
+      </section>
+
+      <section id="tab-he-thong" class="hide">
+        <div class="sec-head"><h2>Hệ thống</h2></div>
+        <p class="sub">Uỷ quyền, category asset và lịch sử kéo dữ liệu.</p>
+        <div id="system"></div>
+      </section>
     </div>
-  </section>
-
-  <section id="tab-creator" class="hide">
-    <h1>Creator</h1>
-    <p class="sub">Creator có phát sinh đơn trong các kỳ đã kéo. Không phải toàn bộ creator đang bind.</p>
-
-    <div class="toolbar">
-      <div class="search">
-        <input type="search" id="c-q" placeholder="Tìm theo username…" aria-label="Tìm creator" autocomplete="off">
-        <kbd>/</kbd>
-      </div>
-      <span class="count" id="c-count" aria-live="polite"></span>
-    </div>
-
-    <div class="card table-card"><table id="t-creators"></table></div>
-  </section>
-
-  <section id="tab-metric" class="hide">
-    <h1>Metric</h1>
-    <p class="sub">Toàn bộ chỉ số hệ thống theo dõi: định nghĩa, công thức, nguồn và bẫy thường gặp.</p>
-
-    <div class="toolbar">
-      <div class="search">
-        <input type="search" id="w-q" placeholder="Tìm tên, mã, định nghĩa, công thức, nguồn…"
-               aria-label="Tìm metric" autocomplete="off">
-        <kbd>/</kbd>
-      </div>
-      <select id="w-group" aria-label="Lọc theo nhóm"><option value="">Mọi nhóm</option></select>
-      <select id="w-status" aria-label="Lọc theo pipeline">
-        <option value="">Mọi trạng thái</option>
-        <option value="1">Đã kéo</option>
-        <option value="0">Chưa kéo</option>
-      </select>
-      <div class="seg" id="w-view" role="group" aria-label="Kiểu hiển thị">
-        <button data-view="card" aria-pressed="true">Thẻ</button>
-        <button data-view="table" aria-pressed="false">Bảng</button>
-      </div>
-      <span class="count" id="w-count" aria-live="polite"></span>
-    </div>
-
-    <div id="wiki"></div>
-  </section>
-
-</main>
-
-<footer class="wrap">Dữ liệu từ TikTok Shop Partner Open API · lưu tại Postgres · giao diện theo token UpBase.</footer>
+  </main>
+</div>
 <script src="app.js" type="module"></script>
 </body>
 </html>

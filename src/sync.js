@@ -122,7 +122,10 @@ export function aggregate(rows) {
 
     let a = acc.get(user);
     if (!a) {
-      a = { gmv: 0, refund: 0, items: 0, commission: 0, base: 0, orderIds: new Set() };
+      a = { gmv: 0, refund: 0, items: 0, commission: 0, base: 0,
+            orderIds: new Set(), refundOrderIds: new Set(),
+            products: new Set(), shops: new Set(),
+            videos: new Set(), lives: new Set() };
       acc.set(user, a);
     }
 
@@ -135,11 +138,29 @@ export function aggregate(rows) {
     a.gmv += gross;                                    // GMV la GROSS: gom ca don hoan
 
     // cap_order khong co returned_quantity/refunded_quantity -> chi bat duoc hoan TOAN PHAN.
-    const refunded = r.fully_return === 'Yes' || String(r.settle_status ?? '').toUpperCase() === INELIGIBLE;
-    if (refunded) { a.refund += gross; continue; }
+    const ineligible = String(r.settle_status ?? '').toUpperCase() === INELIGIBLE;
+    const refunded = r.fully_return === 'Yes' || ineligible;
+    if (refunded) {
+      a.refund += gross;
+      // settle_status la trang thai cua CA DON, nen INELIGIBLE = ca don bi huy/hoan.
+      // fully_return chi la cua mot dong SKU -> khong suy ra ca don bi huy.
+      if (ineligible) a.refundOrderIds.add(r.id);
+      continue;
+    }
 
     a.orderIds.add(r.id);
     a.items += qty;
+
+    // Cac chieu nay API van tra ve day du (da do: 100% dong co product_id/product_name/
+    // shop_name/content_type). content_type = LIVE | VIDEO | SHOP, nen dem duoc so video va
+    // so buoi live CO DON ma khong can creator uy quyen.
+    if (r.product_id) a.products.add(r.product_id);
+    if (r.shop_name) a.shops.add(r.shop_name);
+    if (r.content_id) {
+      const t = String(r.content_type ?? '').toUpperCase();
+      if (t === 'VIDEO') a.videos.add(r.content_id);
+      else if (t === 'LIVE') a.lives.add(r.content_id);
+    }
 
     const base = money(r.estimated_commission_base);
     bad += base.bad;
@@ -163,10 +184,19 @@ export function aggregate(rows) {
       est_commission: a.commission,
       commission_base: a.base,
       refund_amount: a.refund,
+      refund_orders: a.refundOrderIds.size,
       net_gmv: a.gmv - a.refund,
-      aov: orders ? a.gmv / orders : 0,
-      commission_rate: a.gmv ? (a.commission / a.gmv) * 100 : 0,
+      // AOV phai cung MOT CO SO o tu va mau: gmv gom ca don huy, nen mau so cung
+      // phai la TONG don (hop le + huy). Lay gmv/orders se thoi AOV len ~30%.
+      aov: (orders + a.refundOrderIds.size) ? a.gmv / (orders + a.refundOrderIds.size) : 0,
+      // TikTok dinh nghia: hoa hong = GOC HOA HONG x ty le. Nen mau so la commission_base,
+      // khong phai gmv (gmv con gom don huy va ca phan khong tinh hoa hong).
+      commission_rate: a.base ? (a.commission / a.base) * 100 : 0,
       refund_rate: a.gmv ? (a.refund / a.gmv) * 100 : 0,
+      products_sold: a.products.size,
+      shops_sold: a.shops.size,
+      videos_with_orders: a.videos.size,
+      lives_with_orders: a.lives.size,
       creators_seen: 1,
       creators_active: orders > 0 ? 1 : 0,
     });
@@ -177,6 +207,50 @@ export function aggregate(rows) {
   if (currencies.size > 1) warnings.push(`tron nhieu currency: ${[...currencies].join(', ')} -- tong tien khong co y nghia`);
 
   return { byCreator, warnings };
+}
+
+// Luu dong tho. Gop thanh INSERT nhieu VALUES: 1 ngay ~8.8k dong, insert tung dong se
+// them 8.8k round-trip/ngay va lam backfill cham gap nhieu lan.
+const RAW_CHUNK = 500;
+
+async function writeRaw(dayStr, rows) {
+  const dedup = new Map();
+  for (const r of rows ?? []) {
+    if (!r?.id || !r.creator_username) continue;
+    // Cung khoa chinh nhu bang: dong trung giua cac trang chi giu ban cuoi.
+    dedup.set(`${r.id}|${r.sku_id ?? ''}|${r.content_id ?? ''}`, r);
+  }
+  const all = [...dedup.values()];
+  let n = 0;
+
+  for (let i = 0; i < all.length; i += RAW_CHUNK) {
+    const chunk = all.slice(i, i + RAW_CHUNK);
+    const vals = [];
+    const params = [];
+    for (const r of chunk) {
+      const est = EST_COMMISSION_PARTS.reduce((t, k) => t + money(r[k]).value, 0);
+      const base = params.length;
+      vals.push(`($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13},$${base+14},$${base+15},$${base+16},$${base+17})`);
+      params.push(
+        r.id, r.sku_id ?? '', r.content_id ?? '', dayStr, r.creator_username,
+        r.product_id ?? null, r.product_name ?? null, r.shop_name ?? null,
+        r.content_type ?? null, r.settle_status ?? null, r.fully_return ?? null,
+        num(r.quantity), money(r.price).value, money(r.price).currency,
+        money(r.estimated_commission_base).value, est, num(r.standard_commission_rate));
+    }
+    await q(
+      `insert into sku_orders (order_id, sku_id, content_id, day, creator_username,
+         product_id, product_name, shop_name, content_type, settle_status, fully_return,
+         quantity, price_amount, currency, commission_base, est_commission, std_rate)
+       values ${vals.join(',')}
+       on conflict (order_id, sku_id, content_id) do update set
+         day = excluded.day, settle_status = excluded.settle_status,
+         fully_return = excluded.fully_return, commission_base = excluded.commission_base,
+         est_commission = excluded.est_commission, collected_at = now()`,
+      params);
+    n += chunk.length;
+  }
+  return n;
 }
 
 async function writeDay(dayStr, byCreator) {
@@ -204,14 +278,16 @@ async function writeDay(dayStr, byCreator) {
 
 // Keo tung NGAY mot. Mot ngay ~8.8k dong = ~88 trang; keo ca ky trong 1 lan goi vua cham tran
 // 92 ngay vua khong backfill lai duoc tung ngay.
-export async function runSync({ days = 7 } = {}) {
-  if (days > MAX_WINDOW_DAYS) throw new Error(`API chi cho toi da ${MAX_WINDOW_DAYS} ngay`);
+export async function runSync({ days = 7, skipExisting = false } = {}) {
+  // Tran 92 ngay cua TikTok la cho MOI REQUEST. Ta goi tung ngay mot (1 ngay/request)
+  // nen keo bao nhieu ngay cung duoc; chi can moi request nam trong 1 ngay.
 
   const run = await q(`insert into sync_runs default values returning id`);
   const runId = run.rows[0].id;
   const errors = [];
   const warnings = [];
   let written = 0;
+  let skipped = 0;
 
   try {
     const token = await partnerToken();
@@ -222,14 +298,25 @@ export async function runSync({ days = 7 } = {}) {
       const from = new Date(midnight.getTime() - i * 86400e3);
       const to = new Date(midnight.getTime() - (i - 1) * 86400e3);
       const dayStr = day(from);
+      // Backfill dai (vai tram ngay) ma dut giua chung thi chay lai se lam lai tu dau.
+      // Bo qua ngay da co du lieu de lan chay sau tiep tuc duoc tu cho dang do.
+      if (skipExisting) {
+        // Kiem tra bang RAW, khong phai metric_values: ngay da gop nhung chua luu raw
+        // van phai keo lai, neu khong thi so lieu theo san pham/video/live bi khuyet ngay do.
+        const have = await q(
+          `select 1 from sku_orders where day = $1 limit 1`, [dayStr]);
+        if (have.rowCount) { skipped++; continue; }
+      }
       try {
         const rows = await fetchDay(token, cipher, Math.floor(from / 1000), Math.floor(to / 1000));
         const { byCreator, warnings: w } = aggregate(rows);
         for (const wi of w) warnings.push(`${dayStr}: ${wi}`);
+        await writeRaw(dayStr, rows);
         written += await writeDay(dayStr, byCreator);
       } catch (e) { errors.push(`${dayStr}: ${e.message}`); }
     }
 
+    if (skipped) warnings.unshift(`bo qua ${skipped} ngay da co du lieu`);
     const note = [...errors, ...warnings].join(' | ') || null;
     await q(`update sync_runs set finished_at=now(), status=$2, rows_written=$3, note=$4 where id=$1`,
       [runId, errors.length ? 'error' : 'ok', written, note]);
@@ -237,5 +324,5 @@ export async function runSync({ days = 7 } = {}) {
     await q(`update sync_runs set finished_at=now(), status='error', note=$2 where id=$1`, [runId, e.message]);
     throw e;
   }
-  return { runId, written, errors, warnings };
+  return { runId, written, skipped, errors, warnings };
 }

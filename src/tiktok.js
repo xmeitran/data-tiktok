@@ -83,3 +83,18 @@ export function authorizeUrl(state = '') {
   const q = new URLSearchParams({ service_id: id, ...(state ? { state } : {}) });
   return `${host}/open/authorize?${q}`;
 }
+
+// Link uy quyen CREATOR. Host + ten tham so khac han luong partner, va `state` la BAT BUOC
+// (partner thi tuy chon) -- bo state di thi TikTok tra loi ngay o trang authorize.
+// Da xac minh thuc nghiem: khong the dung link partner cho creator hay nguoc lai.
+export function creatorAuthorizeUrl(state) {
+  if (!state) throw new Error('luong creator BAT BUOC co state');
+  if (!KEY()) throw new Error('thieu TTS_APP_KEY');
+  const host = process.env.TTS_CREATOR_AUTH_HOST || 'https://shop.tiktok.com';
+  return `${host}/alliance/creator/auth?${new URLSearchParams({ app_key: KEY(), state })}`;
+}
+
+// Token tra ve user_type: 1 = creator, 3 = partner (do thuc nghiem, docs khong ghi).
+// Dung de biet callback nao la creator ma khong phai doan theo state.
+export const CREATOR_USER_TYPE = '1';
+export const isCreatorToken = (t) => String(t?.user_type ?? '') === CREATOR_USER_TYPE;

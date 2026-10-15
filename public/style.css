@@ -1,45 +1,105 @@
-/* Dung token UpBase (public/tokens.css). Khong tu che thang spacing moi. */
+/* Dung token UpBase (public/tokens.css). Khong tu che thang spacing moi.
+ *
+ * BO SUNG (extension, KHONG phai token goc cua UpBase): nhom mau NEN trung tinh.
+ * Ly do: `--up-color-background` la trang tinh va `--up-gradient-card` la gradient coral,
+ * nen neu phu gradient do len moi the thi the lai mau hon ca nen -> ca man hinh mot mau cam.
+ * Dashboard dac du lieu can nen trung tinh de mat nghi; coral de danh cho diem nhan.
+ * Ngoai ra `--color--neutral--50/100` deu la WHITE nen khong dung lam vach ke / zebra duoc.
+ */
+:root {
+  --surface-page:   #f6f7f8;
+  --surface-card:   #ffffff;
+  --surface-subtle: #f1f2f4;
+  --line:           #e7e8ea;
+  --line-soft:      #f0f1f3;
+  --up-color-ok:    var(--color--green--200);   /* #10b981, xanh that */
+  --up-color-bad:   var(--color--red--200);     /* #ef4444 */
+}
+
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: var(--up-color-background);
+  background: var(--surface-page);
   color: var(--up-color-body);
   font-family: var(--up-font-sans);
   font-size: var(--p--font-size);
   line-height: 1.6;
 }
-.wrap { max-width: var(--up-container-max); margin: 0 auto; padding: 0 20px; }
+/* --- Bo cuc: sidebar trai + vung noi dung --- */
+.app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
 
-header {
-  position: sticky; top: 0; z-index: 10;
-  background: var(--up-color-nav-surface);
-  backdrop-filter: var(--up-blur-nav);
-  border-bottom: 1px solid var(--up-color-nav-border);
+.side {
+  position: sticky; top: 0; align-self: start; height: 100vh;
+  display: flex; flex-direction: column; gap: 4px; padding: 24px 16px;
+  background: var(--up-color-nav-surface); border-right: 1px solid var(--up-color-nav-border);
 }
-.bar { display: flex; align-items: center; gap: var(--up-space-grid); height: 68px; }
-.brand { font-weight: 600; letter-spacing: -0.5px; color: var(--up-color-heading); font-size: 20px; }
+.side-brand { font-weight: 600; color: var(--up-color-heading); font-size: 18px;
+              letter-spacing: -0.4px; line-height: 1.3; margin-bottom: 20px; }
+.side-brand small { font-weight: 400; font-size: 12px; color: var(--color--neutral--500); letter-spacing: 0; }
+.side-foot { margin-top: auto; }
 .dot { color: var(--up-color-primary); }
-nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+
+nav { display: flex; flex-direction: column; gap: 2px; }
 nav button {
-  font: inherit; cursor: pointer; padding: 8px 16px;
-  border-radius: var(--up-radius-nav); border: 1px solid transparent;
-  background: transparent; color: var(--up-color-body);
+  position: relative; display: flex; align-items: center; gap: 10px;
+  font: inherit; cursor: pointer; text-align: left; padding: 9px 12px;
+  border-radius: var(--up-radius-nav); border: 0;
+  background: transparent; color: var(--color--neutral--700);
 }
-nav button:hover { background: var(--color--primary--50); }
-nav button[aria-current="page"] { background: var(--up-color-primary); color: #fff; }
+nav button svg { width: 17px; height: 17px; flex: none; fill: currentColor; opacity: .65; }
+nav button:hover { background: var(--color--neutral--50); color: var(--up-color-heading); }
+nav button[aria-current="page"] {
+  background: var(--color--primary--50); color: var(--color--primary--800); font-weight: 500;
+}
+nav button[aria-current="page"] svg { opacity: 1; color: var(--up-color-primary); }
+nav button[aria-current="page"]::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--up-color-primary);
+}
 nav button:focus-visible, .btn:focus-visible { outline: 2px solid var(--up-color-primary); outline-offset: 2px; }
+
+main { min-width: 0; }
+.topbar {
+  position: sticky; top: 0; z-index: 9;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  /* min-height chu khong phai height: topbar co flex-wrap, nen o man hinh hep cac muc
+     xuong hang 2 trong khi the van cao 60px -> chu tran ra de len tieu de cua tab. */
+  min-height: 60px; padding: 8px 28px;
+  background: var(--surface-card); border-bottom: 1px solid var(--line);
+}
+.crumb { font-weight: 600; color: var(--up-color-heading); }
+.coverage { margin-left: auto; color: var(--color--neutral--500); font-size: var(--small--font-size); }
+.content { padding: 22px 26px 80px; }   /* tran het be ngang: bang du lieu can cho */
+
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin: 36px 0 10px; }
+.sec-head:first-child { margin-top: 8px; }
+.sec-head h2, .sec-head h3 { margin: 0; }
+.sec-head h3 { font-size: var(--h5--font-size); color: var(--up-color-heading); }
+.sec-head .btn.sm { margin-left: auto; padding: 7px 14px; font-size: var(--small--font-size); }
+.muted { color: var(--color--neutral--500); font-size: var(--small--font-size); }
+
+.banner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 14px; border-radius: var(--up-radius-control);
+  background: var(--surface-subtle); color: var(--color--neutral--700);
+  font-size: var(--small--font-size); margin-bottom: 14px;
+}
+.dot-ok, .dot-err { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-ok { background: var(--color--green--300); }
+.dot-err { background: var(--color--red--200); }
+.warn-text { color: var(--color--yellow--200); }
 
 h1 { font-size: var(--up-type-section-size); line-height: var(--up-type-section-line);
      letter-spacing: var(--up-type-section-tracking); font-weight: var(--up-type-section-weight);
      color: var(--up-color-heading); margin: 40px 0 4px; }
-.sub { color: var(--color--neutral--600); margin: 0 0 28px; }
+.sub { color: var(--color--neutral--600); margin: 0 0 18px; max-width: 76ch; }
 h2 { font-size: var(--up-type-card-size); line-height: var(--up-type-card-line);
      letter-spacing: var(--up-type-card-tracking); font-weight: var(--up-type-card-weight);
      color: var(--up-color-heading); margin: 32px 0 12px; }
 
 .card {
-  background: var(--up-gradient-card);
-  border: var(--up-border-card-width) solid var(--up-color-card-border);
+  background: var(--surface-card);
+  border: 1px solid var(--line);
   border-radius: var(--up-radius-card);
   padding: 24px;
 }
@@ -48,11 +108,21 @@ h2 { font-size: var(--up-type-card-size); line-height: var(--up-type-card-line);
 .kpi .l { color: var(--color--neutral--600); font-size: var(--small--font-size); }
 
 table { width: 100%; border-collapse: collapse; font-size: var(--small--font-size); }
-th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--color--neutral--200); vertical-align: top; }
-th { color: var(--color--neutral--600); font-weight: 500; white-space: nowrap; }
+th, td { text-align: left; padding: 9px 14px; vertical-align: middle; }
+th {
+  background: var(--surface-subtle); color: var(--color--neutral--600);
+  font-weight: 500; white-space: nowrap; font-size: 12px;
+  letter-spacing: .2px; border-bottom: 1px solid var(--color--neutral--200);
+}
+tbody td { border-bottom: 1px solid var(--line-soft); }
+tbody tr:nth-child(even) { background: var(--surface-subtle); }
 tbody tr:hover { background: var(--color--primary--50); }
+tbody tr:last-child td { border-bottom: 0; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.table-card { padding: 8px 8px 0; overflow-x: auto; }
+td.nowrap, .nowrap { white-space: nowrap; }
+.table-card { padding: 0; overflow: auto; max-height: 72vh; }
+/* Chi dinh tieu de trong vung CO CUON, khong dinh o bang nho trong the. */
+.table-card th { position: sticky; top: 0; z-index: 2; }
 
 .tag { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
 .tag.ok   { background: var(--color--green--100); color: var(--color--green--300); }
@@ -81,7 +151,6 @@ select, input[type=search] {
   font: inherit; padding: 9px 12px; border-radius: var(--up-radius-control);
   border: 1.5px solid var(--color--neutral--200); background: #fff; color: var(--up-color-body);
 }
-footer { color: var(--color--neutral--500); font-size: var(--small--font-size); padding: 48px 0 60px; }
 
 @media (max-width: 767px) {
   .card { border-radius: var(--up-radius-card-mobile); padding: 18px; }
@@ -122,30 +191,6 @@ footer { color: var(--color--neutral--500); font-size: var(--small--font-size); 
 .seg button[aria-pressed="true"] { background: var(--up-color-primary); color: #fff; }
 .seg button:focus-visible { outline: 2px solid var(--up-color-primary); outline-offset: -2px; }
 
-.w-group-h {
-  display: flex; align-items: baseline; gap: 10px;
-  margin: 28px 0 12px; color: var(--up-color-heading); font-weight: 600;
-}
-.w-group-h:first-child { margin-top: 8px; }
-.w-group-h .n { color: var(--color--neutral--500); font-weight: 400; font-size: var(--small--font-size); }
-
-.w-card { display: flex; flex-direction: column; gap: 10px; }
-.w-card .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.w-card .head h3 {
-  margin: 0; font-size: var(--h5--font-size); font-weight: 600;
-  color: var(--up-color-heading); letter-spacing: -0.3px;
-}
-.w-card .def { margin: 0; }
-.w-card .meta { display: grid; grid-template-columns: 92px 1fr; gap: 6px 12px;
-                font-size: var(--small--font-size); margin: 0; }
-.w-card .meta dt { color: var(--color--neutral--600); }
-.w-card .meta dd { margin: 0; overflow-wrap: anywhere; }
-.w-card details > summary {
-  cursor: pointer; font-size: var(--small--font-size);
-  color: var(--up-color-primary); list-style-position: inside;
-}
-.w-card details[open] > summary { margin-bottom: 8px; }
-
 mark { background: var(--color--yellow--50); color: var(--color--yellow--200);
        border-radius: 4px; padding: 0 2px; }
 .empty { color: var(--color--neutral--500); padding: 40px 0; text-align: center; }
@@ -164,14 +209,16 @@ mark { background: var(--color--yellow--50); color: var(--color--yellow--200);
 .chart-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .chart-head h2 { margin: 0; }
 .chart-head select { margin-left: auto; }
-#chart svg { width: 100%; height: 220px; display: block; }
-#chart .bar { fill: var(--up-color-primary); }
-#chart g:hover .bar { fill: var(--color--primary--700); }
-#chart .bar-v, #chart .bar-x {
-  text-anchor: middle; font-family: var(--up-font-sans); font-variant-numeric: tabular-nums;
-}
-#chart .bar-v { font-size: 13px; fill: var(--up-color-heading); font-weight: 600; }
-#chart .bar-x { font-size: 12px; fill: var(--color--neutral--500); }
+.bars { display: flex; align-items: flex-end; gap: 10px; height: 230px; padding-top: 6px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.bar-v { font-size: 13px; font-weight: 600; color: var(--up-color-heading);
+         text-align: center; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.bar-track { flex: 1; display: flex; align-items: flex-end; }
+.bar-fill { width: 100%; max-width: 72px; margin: 0 auto; border-radius: 6px 6px 0 0;
+            background: var(--up-color-primary); min-height: 2px; }
+.bar-col:hover .bar-fill { background: var(--color--primary--700); }
+.bar-x { font-size: 12px; color: var(--color--neutral--500); text-align: center;
+         margin-top: 6px; white-space: nowrap; }
 
 .two-col {
   display: grid; gap: var(--up-space-grid); margin-top: var(--up-space-grid);
@@ -191,3 +238,213 @@ tfoot td {
   font-weight: 600; color: var(--up-color-heading);
 }
 td.empty { text-align: center; padding: 32px 0; }
+
+/* --- KPI: nhan + tooltip + chan the --- */
+.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); }
+.kpis .card { padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+.kpi-l {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--color--neutral--600); font-size: 12.5px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kpi-l > :first-child { overflow: hidden; text-overflow: ellipsis; }
+.kpi .n {
+  font-size: clamp(21px, 2.1vw, 27px); letter-spacing: -1px; line-height: 1.15;
+  font-weight: 600; color: var(--up-color-heading);
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.kpi .n.sm { font-size: 15px; letter-spacing: 0; }
+.kpi-f { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 18px; }
+.delta {
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+}
+.delta.up   { background: var(--color--green--100); color: #047857; }
+.delta.down { background: var(--color--red--50);    color: #b91c1c; }
+.delta.flat { background: var(--surface-subtle); color: var(--color--neutral--500); }
+.info { cursor: help; color: var(--color--neutral--300); font-size: 12px; }
+.info:hover, .info:focus-visible { color: var(--up-color-primary); }
+
+.spark { width: 100%; height: 30px; display: block; margin-top: 8px; }
+/* Sparkline chi ta HINH DANG. Huong tang/giam do pill delta noi -- to mau ca 13 duong
+   theo ngay cuoi lam ca man hinh do ruc, mat y nghia canh bao. */
+.spark .sl { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke;
+             stroke: var(--color--neutral--300); }
+.spark .sd { fill: var(--color--neutral--400); }
+
+.kpi.na { background: var(--surface-subtle); border-style: dashed; }
+.kpi.na .n { color: var(--color--neutral--300); }
+.kpi.na .why { margin: 2px 0 0; font-size: 11.5px; color: var(--color--neutral--600); line-height: 1.5; }
+
+/* --- He thong --- */
+#system .card .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+#system .meta { display: grid; grid-template-columns: 112px 1fr; gap: 6px 12px;
+                font-size: var(--small--font-size); margin: 0; }
+#system .meta dt { color: var(--color--neutral--600); }
+#system .meta dd { margin: 0; overflow-wrap: anywhere; }
+#system .meta code { margin: 0 3px 3px 0; display: inline-block; }
+code.key-scope { background: var(--color--green--100); border-color: var(--color--green--200);
+                 color: var(--color--green--300); font-weight: 600; }
+
+@media (max-width: 1023px) {
+  .app { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; flex-direction: row; align-items: center;
+          flex-wrap: wrap; gap: 10px; border-right: 0; border-bottom: 1px solid var(--up-color-nav-border); }
+  .side-brand { margin-bottom: 0; }
+  .side-brand small { display: none; }
+  nav { flex-direction: row; flex-wrap: wrap; }
+  .side-foot { margin-top: 0; }
+  .content { padding: 20px 16px 60px; }
+  .topbar { padding: 0 16px; }
+}
+
+.fieldtab { font-size: var(--small--font-size); }
+.fieldtab td { padding: 7px 10px 7px 0; vertical-align: top; border-bottom: 1px solid var(--color--neutral--100); }
+.fieldtab tr:last-child td { border-bottom: 0; }
+.fieldtab .fname { white-space: nowrap; width: 1%; }
+.fieldtab .en { color: var(--up-color-body); }
+.fieldtab .vi { color: var(--color--neutral--600); margin-top: 3px; padding-left: 10px;
+                border-left: 2px solid var(--color--neutral--200); }
+.fieldtab .en, .fieldtab .vi { white-space: pre-line; }
+.derived { margin: 0; font-size: var(--small--font-size); color: var(--color--neutral--500); font-style: italic; }
+
+/* Khoi tieu de co vach mau nho cho de quet mat */
+.sec-head h2, .sec-head h3 { position: relative; padding-left: 11px; }
+.sec-head h2::before, .sec-head h3::before {
+  content: ''; position: absolute; left: 0; top: .18em; bottom: .18em; width: 3px;
+  border-radius: 3px; background: var(--up-color-primary);
+}
+.chart-card { padding: 20px 22px 14px; }
+.two-col .card { padding: 20px 22px; }
+.two-col table { margin: 0 -22px -20px; width: calc(100% + 44px); }
+
+/* --- Tab Metric: danh sach + chi tiet --- */
+.mx { display: grid; grid-template-columns: minmax(230px, 288px) 1fr; gap: 20px; align-items: start; }
+
+.mx-list {
+  position: sticky; top: 76px; max-height: calc(100vh - 100px); overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--up-radius-card); background: var(--surface-card); padding: 6px;
+}
+.mx-grp {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 10px 5px; font-size: 11px; font-weight: 600; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--color--neutral--500);
+}
+.mx-grp span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.mx-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  font: inherit; text-align: left; cursor: pointer; border: 0; background: transparent;
+  padding: 7px 10px; border-radius: var(--up-radius-nav); color: var(--up-color-body);
+}
+.mx-row:hover { background: var(--color--neutral--50); }
+.mx-row.on { background: var(--color--primary--50); color: var(--color--primary--800); font-weight: 500; }
+.mx-row-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-row code { font-size: 10.5px; padding: 0 4px; background: transparent; border: 0;
+               color: var(--color--neutral--400); }
+.mx-row.on code { color: var(--color--primary--700); }
+.mx-row .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.mx-row .dot.ok { background: var(--color--green--300); }
+.mx-row .dot.na { background: var(--color--neutral--300); }
+
+.mx-detail {
+  border: 1px solid var(--line);
+  border-radius: var(--up-radius-card); background: var(--surface-card); padding: 26px 28px;
+}
+.mx-head { margin-bottom: 14px; }
+.mx-head h3 {
+  margin: 0 0 8px; font-size: clamp(19px, 2vw, 24px); font-weight: 600;
+  letter-spacing: -.5px; color: var(--up-color-heading); line-height: 1.25;
+}
+.mx-chips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.mx-def { margin: 0 0 16px; font-size: 15px; line-height: 1.65; max-width: 68ch;
+          color: var(--up-color-heading); }
+
+.mx-facts { display: flex; gap: 26px; flex-wrap: wrap; margin: 0 0 20px;
+            padding: 12px 0; border-block: 1px solid var(--color--neutral--100); }
+.mx-facts dt { font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+               color: var(--color--neutral--500); }
+.mx-facts dd { margin: 2px 0 0; font-weight: 500; color: var(--up-color-heading); }
+
+.mx-detail h4 {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 22px 0 8px; font-size: 13px; font-weight: 600;
+  color: var(--up-color-heading);
+}
+.by { font-size: 10.5px; font-weight: 500; padding: 2px 8px; border-radius: 999px;
+      text-transform: none; letter-spacing: 0; }
+.by.tiktok { background: var(--color--primary--50); color: var(--color--primary--800); }
+.by.ours   { background: var(--color--neutral--100); color: var(--color--neutral--600); }
+.formula { display: inline-block; padding: 6px 10px; white-space: pre-wrap; }
+.mx-detail .pit { margin: 0; padding: 12px 14px; border-radius: var(--up-radius-control);
+                  background: var(--color--yellow--50); color: var(--color--primary--800);
+                  line-height: 1.6; max-width: 72ch; }
+.mx-detail .muted { max-width: 72ch; }
+
+@media (max-width: 899px) {
+  .mx { grid-template-columns: 1fr; }
+  .mx-list { position: static; max-height: 290px; }
+}
+
+/* --- Bo chon ky tren topbar + do tuoi du lieu --- */
+.seg.period button { padding: 6px 12px; font-size: var(--small--font-size); }
+.fresh { margin-left: auto; color: var(--color--neutral--600); font-size: var(--small--font-size);
+         display: flex; align-items: center; gap: 6px; }
+.fresh b { color: var(--up-color-heading); font-weight: 600; }
+
+/* --- Creator: bang bam duoc + bang chi tiet theo ngay --- */
+#t-creators tbody tr { cursor: pointer; }
+.drill { margin-bottom: 14px; padding: 18px 20px; }
+.drill-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.drill-head h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--up-color-heading); }
+.drill-head .btn { margin-left: auto; }
+.drill table { margin: 0 -20px -18px; width: calc(100% + 40px); }
+.banner.err { background: var(--color--red--50); color: var(--color--red--200); }
+.doclink { margin-left: auto; font-size: 12px; font-weight: 500; white-space: nowrap;
+           color: var(--up-color-primary); text-decoration: none; }
+.doclink:hover { text-decoration: underline; }
+.kpi.warn { border-color: var(--up-color-bad); background: var(--color--red--50); }
+
+/* ---------- Tab San pham ---------- */
+/* Mot hue duy nhat + hai muc xam, khong phai cau vong 4 mau: cac phan da duoc xep theo GMV
+   giam dan, nen do dam cua mau phai di cung do lon cua so lieu. */
+.share {
+  display: flex; height: 34px; border-radius: 8px; overflow: hidden;
+  margin: 0 0 14px; border: 1.5px solid var(--up-color-card-border);
+}
+.share-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 600; color: #fff;
+  white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.share-seg.s0 { background: var(--color--primary--500); }
+.share-seg.s1 { background: var(--color--primary--300); color: var(--up-color-heading); }
+.share-seg.s2 { background: var(--color--neutral--400); }
+.share-seg.s3 { background: var(--color--neutral--300); color: var(--up-color-heading); }
+
+.swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.swatch.s0 { background: var(--color--primary--500); }
+.swatch.s1 { background: var(--color--primary--300); }
+.swatch.s2 { background: var(--color--neutral--400); }
+.swatch.s3 { background: var(--color--neutral--300); }
+
+/* Truoc day .why chi co style trong .kpi.na -> the loai noi dung mat dinh dang. */
+.kpi .why { margin: 2px 0 0; font-size: 11.5px; color: var(--color--neutral--600); line-height: 1.5; }
+
+/* Ten san pham TikTok dai hang tram ky tu: cat o day, ban day du nam o title. */
+td.wide, th.wide { max-width: 300px; }
+td.clip { max-width: 170px; }
+td.wide, td.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Ty trong GMV khong phai mot muc tang -> khong duoc muon .delta.up (xanh = di len). */
+.chip {
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--color--neutral--100); color: var(--color--neutral--700);
+}
+
+.sec-head .seg { margin-left: 4px; }
+
+/* O man hinh hep, phan nho khong du cho chu -> nhan bi cat con "DEO 1". Giu nhan cua
+   phan lon nhat thoi; cac phan khac da co so day du o the ngay ben duoi va o tooltip. */
+@media (max-width: 767px) {
+  .share-seg:not(.s0) { font-size: 0; }
+}
