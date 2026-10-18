@@ -8,7 +8,7 @@ export const METRICS = [
   {
     key: 'creators_authorized',
     fields: [],
-    label: 'Creator đã uỷ quyền',
+    label: 'Authorized Creators',
     group: 'Uỷ quyền',
     unit: 'creator',
     level: 'hệ thống',
@@ -22,7 +22,7 @@ export const METRICS = [
   {
     key: 'creators_active',
     fields: ['creator_username', 'id', 'settle_status', 'fully_return'],
-    label: 'Creator có đơn hợp lệ',
+    label: 'Active Creators',
     group: 'Uỷ quyền',
     unit: 'creator',
     level: 'hệ thống',
@@ -34,7 +34,7 @@ export const METRICS = [
   },
   {
     key: 'partner_authorizations',
-    label: 'Uỷ quyền partner đang hoạt động',
+    label: 'Active Partner Authorizations',
     group: 'Uỷ quyền', unit: 'uỷ quyền', level: 'hệ thống',
     live: true,
     definition: 'Số uỷ quyền partner còn hiệu lực. Toàn bộ pipeline chạy bằng MỘT uỷ quyền này — mất nó là không kéo được gì.',
@@ -45,7 +45,7 @@ export const METRICS = [
   },
   {
     key: 'granted_scopes_count',
-    label: 'Scope được cấp',
+    label: 'Granted Scopes',
     group: 'Uỷ quyền', unit: 'scope', level: 'hệ thống',
     live: true,
     definition: 'Số scope TikTok cấp cho token partner hiện tại. Pipeline chỉ cần 2 trong số đó: partner.cap_orders.read để đọc đơn, partner.authorization.info để lấy category asset cipher.',
@@ -56,7 +56,7 @@ export const METRICS = [
   },
   {
     key: 'access_token_days_left',
-    label: 'Access token còn lại',
+    label: 'Access Token Days Remaining',
     group: 'Uỷ quyền', unit: 'ngày', level: 'hệ thống',
     live: true,
     definition: 'Số ngày còn lại của access token. Hết hạn thì sync tự dùng refresh token để gia hạn.',
@@ -67,7 +67,7 @@ export const METRICS = [
   },
   {
     key: 'refresh_token_days_left',
-    label: 'Refresh token còn lại',
+    label: 'Refresh Token Days Remaining',
     group: 'Uỷ quyền', unit: 'ngày', level: 'hệ thống',
     live: true,
     definition: 'Số ngày còn lại của refresh token. Hết hạn cái này thì bắt buộc phải uỷ quyền lại thủ công.',
@@ -78,7 +78,7 @@ export const METRICS = [
   },
   {
     key: 'category_assets_usable',
-    label: 'Category asset gọi được API',
+    label: 'Usable Category Assets',
     group: 'Uỷ quyền', unit: 'asset', level: 'hệ thống',
     live: true,
     definition: 'Trong số category asset partner đã uỷ quyền, bao nhiêu cái thực sự gọi được cap_order/search. Thực tế chỉ có Creator Management.',
@@ -90,7 +90,7 @@ export const METRICS = [
   {
     key: 'gmv',
     fields: ['price.amount', 'quantity'],
-    label: 'GMV gộp',
+    label: 'Gross Attributed GMV',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -103,7 +103,7 @@ export const METRICS = [
   {
     key: 'orders',
     fields: ['id', 'settle_status', 'fully_return'],
-    label: 'Số đơn hợp lệ',
+    label: 'Valid Orders',
     group: 'Doanh thu',
     unit: 'đơn',
     level: 'creator',
@@ -116,7 +116,7 @@ export const METRICS = [
   {
     key: 'orders_all',
     fields: ['id'],
-    label: 'Tổng số đơn (gộp)',
+    label: 'Total Orders (Gross)',
     group: 'Doanh thu',
     unit: 'đơn',
     level: 'creator',
@@ -129,7 +129,7 @@ export const METRICS = [
   {
     key: 'items_sold',
     fields: ['quantity', 'settle_status', 'fully_return'],
-    label: 'Số lượng sản phẩm (gộp)',
+    label: 'Gross Units Sold',
     group: 'Doanh thu',
     unit: 'sản phẩm',
     level: 'creator',
@@ -142,7 +142,7 @@ export const METRICS = [
   {
     key: 'items_sold_net',
     fields: ['quantity', 'settle_status', 'fully_return'],
-    label: 'Số lượng sản phẩm sau hoàn/hủy (ước tính)',
+    label: 'Net Units Sold (Estimated)',
     group: 'Doanh thu',
     unit: 'sản phẩm',
     level: 'creator',
@@ -155,7 +155,7 @@ export const METRICS = [
   {
     key: 'refunded_items',
     fields: ['quantity', 'settle_status', 'fully_return'],
-    label: 'Số lượng sản phẩm trên dòng hoàn/hủy',
+    label: 'Units on Refunded/Cancelled Lines',
     group: 'Chất lượng',
     unit: 'sản phẩm',
     level: 'creator',
@@ -168,7 +168,7 @@ export const METRICS = [
   {
     key: 'est_commission',
     fields: ['estimated_standard_commission', 'estimated_bonus_commission', 'estimated_shop_ads_commission', 'estimated_tap_bonus_commission'],
-    label: 'Hoa hồng ước tính (gộp)',
+    label: 'Estimated Commission (Gross)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -181,7 +181,7 @@ export const METRICS = [
   {
     key: 'est_commission_net',
     fields: ['estimated_standard_commission', 'estimated_bonus_commission', 'estimated_shop_ads_commission', 'estimated_tap_bonus_commission', 'settle_status', 'fully_return'],
-    label: 'Hoa hồng ước tính sau hoàn/hủy',
+    label: 'Estimated Commission After Refunds/Cancellations',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -194,7 +194,7 @@ export const METRICS = [
   {
     key: 'aov',
     fields: [],
-    label: 'Giá trị đơn trung bình (gộp)',
+    label: 'Average Order Value (Gross AOV)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -207,7 +207,7 @@ export const METRICS = [
   {
     key: 'commission_rate',
     fields: [],
-    label: 'Tỷ lệ hoa hồng ước tính trên cơ sở tính hoa hồng',
+    label: 'Estimated Commission Rate on Commission Base',
     group: 'Doanh thu',
     unit: '%',
     level: 'creator',
@@ -220,7 +220,7 @@ export const METRICS = [
   {
     key: 'refund_amount',
     fields: ['price.amount', 'quantity', 'settle_status', 'fully_return'],
-    label: 'Giá trị dòng hoàn/hủy',
+    label: 'Refund/Cancel Amount',
     group: 'Chất lượng',
     unit: 'VND',
     level: 'creator',
@@ -233,7 +233,7 @@ export const METRICS = [
   {
     key: 'refund_orders',
     fields: ['id', 'settle_status'],
-    label: 'Số đơn hoàn/hủy toàn bộ',
+    label: 'Fully Refunded/Cancelled Orders',
     group: 'Chất lượng',
     unit: 'đơn',
     level: 'creator',
@@ -246,7 +246,7 @@ export const METRICS = [
   {
     key: 'refund_rate',
     fields: [],
-    label: 'Tỷ lệ giá trị hoàn/hủy',
+    label: 'Refund/Cancel Rate by Value',
     group: 'Chất lượng',
     unit: '%',
     level: 'creator',
@@ -259,7 +259,7 @@ export const METRICS = [
   {
     key: 'net_gmv',
     fields: [],
-    label: 'GMV ròng (ước tính)',
+    label: 'Net GMV (Estimated)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -272,7 +272,7 @@ export const METRICS = [
   {
     key: 'commission_base',
     fields: ['estimated_commission_base'],
-    label: 'Cơ sở tính hoa hồng ước tính (gộp)',
+    label: 'Estimated Commission Base (Gross)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -285,7 +285,7 @@ export const METRICS = [
   {
     key: 'commission_base_net',
     fields: ['estimated_commission_base', 'settle_status', 'fully_return'],
-    label: 'Cơ sở tính hoa hồng sau hoàn/hủy',
+    label: 'Estimated Commission Base After Refunds/Cancellations',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -298,7 +298,7 @@ export const METRICS = [
   {
     key: 'creators_seen',
     fields: ['creator_username'],
-    label: 'Creator có dữ liệu đơn',
+    label: 'Creators with Order Data',
     group: 'Uỷ quyền',
     unit: 'creator',
     level: 'hệ thống',
@@ -337,7 +337,7 @@ export const METRICS = [
   {
     key: 'videos_with_orders',
     fields: ['content_type', 'content_id', 'settle_status', 'fully_return'],
-    label: 'Video phát sinh đơn hợp lệ',
+    label: 'Videos with Valid Orders',
     group: 'Nội dung',
     unit: 'video',
     level: 'creator',
@@ -350,7 +350,7 @@ export const METRICS = [
   {
     key: 'lives_with_orders',
     fields: ['content_type', 'content_id', 'settle_status', 'fully_return'],
-    label: 'Phiên LIVE phát sinh đơn hợp lệ',
+    label: 'LIVE Sessions with Valid Orders',
     group: 'Nội dung',
     unit: 'phiên',
     level: 'creator',
@@ -363,7 +363,7 @@ export const METRICS = [
   {
     key: 'products_sold',
     fields: ['product_id', 'settle_status', 'fully_return'],
-    label: 'Sản phẩm khác nhau đã bán',
+    label: 'Unique Products Sold',
     group: 'Sản phẩm',
     unit: 'sản phẩm',
     level: 'creator',
@@ -376,7 +376,7 @@ export const METRICS = [
   {
     key: 'shops_sold',
     fields: ['shop_name', 'settle_status', 'fully_return'],
-    label: 'Shop khác nhau đã bán',
+    label: 'Unique Shops Sold',
     group: 'Sản phẩm',
     unit: 'shop',
     level: 'creator',
@@ -389,7 +389,7 @@ export const METRICS = [
   {
     key: 'video_count',
     fields: [],
-    label: 'Số video gắn sản phẩm',
+    label: 'Product-Tagged Videos',
     group: 'Nội dung',
     unit: 'video',
     level: 'creator',
@@ -402,7 +402,7 @@ export const METRICS = [
   {
     key: 'live_count',
     fields: [],
-    label: 'Số phiên live',
+    label: 'LIVE Sessions',
     group: 'Nội dung',
     unit: 'phiên',
     level: 'creator',
@@ -415,7 +415,7 @@ export const METRICS = [
   {
     key: 'sample_requests',
     fields: ['sample_applications.id'],
-    label: 'Yêu cầu hàng mẫu',
+    label: 'Sample Requests (Snapshot)',
     group: 'Vận hành',
     unit: 'yêu cầu',
     level: 'creator',
@@ -428,7 +428,7 @@ export const METRICS = [
   {
     key: 'samples_completed',
     fields: ['sample_applications.status'],
-    label: 'Hàng mẫu đã hoàn thành',
+    label: 'Completed Samples (Snapshot)',
     group: 'Vận hành',
     unit: 'yêu cầu',
     level: 'creator',
@@ -441,7 +441,7 @@ export const METRICS = [
   {
     key: 'showcase_products',
     fields: ['products.id', 'products.status.is_hidden'],
-    label: 'Sản phẩm trong showcase',
+    label: 'Showcase Products (Snapshot)',
     group: 'Sản phẩm',
     unit: 'sản phẩm',
     level: 'creator',
@@ -455,7 +455,7 @@ export const METRICS = [
     key: 'showcase_products_unsold',
     fields: ['products.id', 'products.commission.rate', 'products.status.review_status',
              'products.status.inventory_status', 'products.status.is_hidden'],
-    label: 'Sản phẩm treo chưa ra đơn',
+    label: 'Unsold Showcase Products (Snapshot)',
     group: 'Sản phẩm',
     unit: 'sản phẩm',
     level: 'creator',
@@ -468,7 +468,7 @@ export const METRICS = [
   {
     key: 'target_collaborations',
     fields: ['target_collaborations.id', 'target_collaborations.status'],
-    label: 'Chiến dịch hợp tác chỉ định',
+    label: 'Target Collaboration Campaigns (Snapshot)',
     group: 'Vận hành',
     unit: 'chiến dịch',
     level: 'creator',

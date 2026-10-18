@@ -90,16 +90,175 @@ function totals(days) {
 // Nhan ngan cho tieu de bang. Nhan day du trong registry
 // lam bang phinh ra phai cuon ngang; ten day du van con o tooltip va tab Metric.
 const SHORT = {
-  creators_seen: 'Creator có dữ liệu', creators_active: 'Creator có đơn hợp lệ',
-  gmv: 'GMV gộp', net_gmv: 'GMV ròng (ước tính)',
-  orders: 'Đơn hợp lệ', orders_all: 'Đơn gộp', items_sold: 'SP bán (gộp)',
-  items_sold_net: 'SP sau hoàn/hủy (ước tính)', refunded_items: 'SP dòng hoàn/hủy', aov: 'AOV gộp',
-  est_commission: 'HH ước tính (gộp)', est_commission_net: 'HH ước tính sau hoàn/hủy',
-  commission_base: 'Cơ sở HH (gộp)', commission_base_net: 'Cơ sở HH sau hoàn/hủy', commission_rate: '% HH ước tính',
-  refund_amount: 'Giá trị hoàn/hủy', refund_orders: 'Đơn hoàn/hủy toàn bộ', refund_rate: '% hoàn/hủy (giá trị)',
+  creators_seen: 'Creators with Order Data', creators_active: 'Active Creators',
+  gmv: 'Gross GMV', net_gmv: 'Net GMV (Est.)',
+  orders: 'Valid Orders', orders_all: 'Gross Orders', items_sold: 'Gross Units Sold',
+  items_sold_net: 'Net Units Sold (Est.)', refunded_items: 'Refunded/Cancelled Units', aov: 'Gross AOV',
+  est_commission: 'Estimated Commission (Gross)', est_commission_net: 'Estimated Commission After Refunds/Cancellations',
+  commission_base: 'Commission Base (Gross)', commission_base_net: 'Commission Base After Refunds/Cancellations',
+  commission_rate: 'Estimated Commission Rate', refund_amount: 'Refund/Cancel Amount',
+  refund_orders: 'Fully Refunded/Cancelled Orders', refund_rate: 'Refund/Cancel Rate (Value)',
 };
 const shortLabel = (k, m) => SHORT[k] ?? m?.label ?? k;
 const byKey = () => Object.fromEntries(METRICS.map(m => [m.key, m]));
+
+// Tooltip cua cot lay tu registry metric. Cac cot tong hop theo san pham/shop
+// khong co metric key rieng trong registry, nen khai bao cong thuc bo sung tai day.
+// Khong dung title don thuan: title bi cat tuy trinh duyet va khong co layout on dinh.
+const TABLE_TIPS = {
+  'creator:days': {
+    title: 'Days', definition: 'Number of distinct data days available for this creator in the selected period.',
+    formula: 'COUNT(DISTINCT day)', unit: 'days', note: 'Only days with order data are counted.',
+  },
+  'creator:first_seen': {
+    title: 'First Seen', definition: 'First data day on which this creator appeared in the selected period.',
+    formula: 'MIN(day)', unit: 'date', note: 'This is the first observed order-data day, not the creator authorization date.',
+  },
+  'creator:last_seen': {
+    title: 'Last Seen', definition: 'Most recent data day on which this creator appeared in the selected period.',
+    formula: 'MAX(day)', unit: 'date', note: 'This is the last observed order-data day, not the latest TikTok activity timestamp.',
+  },
+  'product:gmv': {
+    title: 'Net GMV (Estimated)', definition: 'GMV from valid SKU-order rows after excluding rows marked as refunded/cancelled.',
+    formula: 'SUM(price.amount × quantity) WHERE VALID_ROW', unit: 'VND',
+    note: 'Estimated because the API does not provide returned quantity for partial refunds.',
+  },
+  'shop:gmv': {
+    title: 'Net GMV (Estimated)', definition: 'GMV from valid SKU-order rows after excluding rows marked as refunded/cancelled.',
+    formula: 'SUM(price.amount × quantity) WHERE VALID_ROW', unit: 'VND',
+    note: 'Estimated because the API does not provide returned quantity for partial refunds.',
+  },
+  'product:orders': {
+    title: 'Valid Orders', definition: 'Distinct orders with at least one valid SKU-order row for the product.',
+    formula: 'COUNT(DISTINCT order_id) WHERE VALID_ROW', unit: 'orders',
+    note: 'A multi-SKU order is counted once.',
+  },
+  'shop:orders': {
+    title: 'Valid Orders', definition: 'Distinct orders with at least one valid SKU-order row for the shop.',
+    formula: 'COUNT(DISTINCT order_id) WHERE VALID_ROW', unit: 'orders',
+    note: 'A multi-SKU order is counted once.',
+  },
+  'product:items': {
+    title: 'Valid Units', definition: 'Quantity from valid SKU-order rows for the product.',
+    formula: 'SUM(quantity) WHERE VALID_ROW', unit: 'items',
+    note: 'Partial refunds cannot be measured exactly without returned_quantity.',
+  },
+  'product:creators': {
+    title: 'Creators', definition: 'Distinct creators with valid attributed orders for the product.',
+    formula: 'COUNT(DISTINCT creator_username) WHERE VALID_ROW', unit: 'creators',
+    note: 'Creator profiles without an order are not included.',
+  },
+  'shop:products': {
+    title: 'Unique Products', definition: 'Distinct products with valid attributed orders for the shop.',
+    formula: 'COUNT(DISTINCT product_id) WHERE VALID_ROW', unit: 'products',
+    note: 'Product IDs are counted within the selected period.',
+  },
+  'shop:creators': {
+    title: 'Creators', definition: 'Distinct creators with valid attributed orders for the shop.',
+    formula: 'COUNT(DISTINCT creator_username) WHERE VALID_ROW', unit: 'creators',
+    note: 'Creator profiles without an order are not included.',
+  },
+  'product:avg_rate': {
+    title: 'Avg. Standard Commission Rate',
+    definition: 'Arithmetic average of TikTok standard commission rates across the product rows.',
+    formula: 'ROUND(AVG(std_rate) / 100, 2)', unit: '%',
+    note: 'This is not the effective commission rate; the weighted rate is shown in the creator metrics.',
+  },
+};
+const TIP_CATALOG = new Map();
+
+function columnTip(c, scope) {
+  const specific = TABLE_TIPS[`${scope}:${c.key}`];
+  if (specific) return specific;
+  const m = byKey()[c.key];
+  if (!m) return null;
+  return {
+    title: m.label,
+    definition: m.definition,
+    formula: m.formula,
+    unit: m.unit,
+    note: m.pitfalls,
+  };
+}
+
+function tipIdFor(c, scope) {
+  const id = `${scope}:${c.key}`;
+  const tip = columnTip(c, scope);
+  if (tip) TIP_CATALOG.set(id, { ...tip, title: tip.title || c.label });
+  return tip ? id : '';
+}
+
+function metricHeader(c, scope, extraClass = '', sortState = null) {
+  const id = tipIdFor(c, scope);
+  const tip = id ? TIP_CATALOG.get(id) : null;
+  const tipText = tip && [
+    tip.title,
+    `Definition: ${tip.definition}`,
+    `Formula: ${tip.formula}`,
+    `Unit: ${tip.unit}`,
+    `Note: ${tip.note}`,
+  ].filter(Boolean).join('\n\n');
+  const sortable = sortState !== null;
+  const on = sortable && sortState.key === c.key;
+  const cls = `${extraClass}${c.num ? 'num ' : ''}${c.wide ? 'wide ' : ''}${c.key === 'username' ? 'who ' : ''}${sortable ? 'sortable' : ''}`;
+  const sortAttrs = sortable
+    ? ` data-sort="${esc(c.key)}" aria-sort="${on ? (sortState.dir === 1 ? 'ascending' : 'descending') : 'none'}"`
+    : '';
+  return `<th class="${cls}"${sortAttrs}${id ? ` data-tip-id="${esc(id)}" title="${esc(tipText)}"` : ''}>${esc(c.label)}${id
+      ? `<span class="metric-help" tabindex="0" role="img" aria-label="Show definition and formula for ${esc(c.label)}">ⓘ</span>` : ''}${sortable
+        ? `<span class="arrow">${on ? (sortState.dir === 1 ? '▲' : '▼') : ''}</span>` : ''}</th>`;
+}
+
+function showMetricTooltip(target, id) {
+  const tip = TIP_CATALOG.get(id);
+  if (!tip) return;
+  let el = $('#metric-tooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'metric-tooltip';
+    el.setAttribute('role', 'tooltip');
+    document.body.append(el);
+  }
+  el.innerHTML = `<strong class="metric-tip-title">${esc(tip.title)}</strong>
+    <div class="metric-tip-item"><b>Definition</b>${esc(tip.definition)}</div>
+    <div class="metric-tip-item"><b>Formula</b><code>${esc(tip.formula)}</code></div>
+    <div class="metric-tip-meta"><b>Unit:</b> ${esc(tip.unit)}${tip.note ? ` · <b>Note:</b> ${esc(tip.note)}` : ''}</div>`;
+  el.hidden = false;
+  const r = target.getBoundingClientRect();
+  const gap = 8;
+  const margin = 12;
+  const left = Math.min(Math.max(margin, r.left), window.innerWidth - el.offsetWidth - margin);
+  const below = r.bottom + gap;
+  const top = below + el.offsetHeight <= window.innerHeight - margin
+    ? below : Math.max(margin, r.top - el.offsetHeight - gap);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
+function hideMetricTooltip() {
+  const el = $('#metric-tooltip');
+  if (el) el.hidden = true;
+}
+
+document.addEventListener('pointerover', (e) => {
+  const th = e.target.closest?.('th[data-tip-id]');
+  if (!th || th.contains(e.relatedTarget)) return;
+  showMetricTooltip(th, th.dataset.tipId);
+});
+document.addEventListener('pointerout', (e) => {
+  const th = e.target.closest?.('th[data-tip-id]');
+  if (!th || th.contains(e.relatedTarget)) return;
+  hideMetricTooltip();
+});
+document.addEventListener('focusin', (e) => {
+  const help = e.target.closest?.('.metric-help');
+  if (help) showMetricTooltip(help.closest('th'), help.closest('th')?.dataset.tipId);
+});
+document.addEventListener('focusout', (e) => {
+  if (e.target.closest?.('.metric-help')) hideMetricTooltip();
+});
+addEventListener('resize', hideMetricTooltip);
+addEventListener('scroll', hideMetricTooltip, true);
 
 // Khung xuong luc dang tai: giu nguyen bo cuc nen trang khong nhay khi du lieu ve.
 // `aria-busy` de trinh doc man hinh biet day la cho doi, khong phai noi dung that.
@@ -306,26 +465,26 @@ const CCOLS = [
   { key: 'username',        label: 'Creator',      num: false },
   // Cot rieng: truoc day co nam ngay sau ten nen moi dong co o mot vi tri khac nhau,
   // vung giua bang so le va mat khong bam duoc vao dau de quet.
-  { key: 'alerts',          label: 'Cảnh báo',     num: false },
-  { key: 'days',            label: 'Số ngày',      num: true },
-  { key: 'gmv',             label: 'GMV gộp',      num: true , delta: true },
-  { key: 'net_gmv',         label: 'GMV ròng (ước tính)', num: true , delta: true },
-  { key: 'refund_amount',   label: 'Giá trị hoàn/hủy', num: true },
-  { key: 'refund_orders',   label: 'Đơn hoàn/hủy toàn bộ', num: true },
-  { key: 'refund_rate',     label: '% hoàn/hủy (giá trị)', num: true, unit: '%' },
-  { key: 'orders',          label: 'Đơn hợp lệ',   num: true , delta: true },
-  { key: 'orders_all',      label: 'Đơn gộp',       num: true, delta: true },
-  { key: 'items_sold',      label: 'SP bán gộp',   num: true },
-  { key: 'items_sold_net',  label: 'SP sau hoàn/hủy (ước tính)', num: true },
-  { key: 'refunded_items',  label: 'SP dòng hoàn/hủy', num: true },
-  { key: 'aov',             label: 'AOV gộp',       num: true },
-  { key: 'commission_base', label: 'Cơ sở HH gộp', num: true },
-  { key: 'commission_base_net', label: 'Cơ sở HH sau hoàn/hủy', num: true },
-  { key: 'est_commission',  label: 'HH ước tính gộp', num: true , delta: true },
-  { key: 'est_commission_net', label: 'HH ước tính sau hoàn/hủy', num: true },
-  { key: 'commission_rate', label: '% HH ước tính', num: true, unit: '%' },
-  { key: 'first_seen',      label: 'Thấy đầu',     num: false },
-  { key: 'last_seen',       label: 'Thấy cuối',    num: false },
+  { key: 'alerts',          label: 'Alerts',       num: false },
+  { key: 'days',            label: 'Days',         num: true },
+  { key: 'gmv',             label: 'Gross GMV',    num: true , delta: true },
+  { key: 'net_gmv',         label: 'Net GMV (Estimated)', num: true , delta: true },
+  { key: 'refund_amount',   label: 'Refund/Cancel Amount', num: true },
+  { key: 'refund_orders',   label: 'Fully Refunded/Cancelled Orders', num: true },
+  { key: 'refund_rate',     label: 'Refund/Cancel Rate by Value', num: true, unit: '%' },
+  { key: 'orders',          label: 'Valid Orders',  num: true , delta: true },
+  { key: 'orders_all',      label: 'Gross Orders',  num: true, delta: true },
+  { key: 'items_sold',      label: 'Gross Units Sold', num: true },
+  { key: 'items_sold_net',  label: 'Net Units Sold (Estimated)', num: true },
+  { key: 'refunded_items',  label: 'Refunded/Cancelled Units', num: true },
+  { key: 'aov',             label: 'Gross AOV',     num: true },
+  { key: 'commission_base', label: 'Commission Base (Gross)', num: true },
+  { key: 'commission_base_net', label: 'Commission Base After Refunds/Cancellations', num: true },
+  { key: 'est_commission',  label: 'Estimated Commission (Gross)', num: true , delta: true },
+  { key: 'est_commission_net', label: 'Estimated Commission After Refunds/Cancellations', num: true },
+  { key: 'commission_rate', label: 'Estimated Commission Rate', num: true, unit: '%' },
+  { key: 'first_seen',      label: 'First Seen',    num: false },
+  { key: 'last_seen',       label: 'Last Seen',     num: false },
 ];
 // Ty le khong cong duoc -> dong tong de trong, thay vi cong bay ra so vo nghia.
 const SUMMABLE = new Set(['days','gmv','net_gmv','refund_amount','refund_orders','orders','orders_all',
@@ -405,12 +564,8 @@ function renderCreators() {
     : `${rows.length}/${CREATORS.length} creator`;
   const cols = ccols();
   const head = `<th class="rank">#</th>` + cols.map(c => {
-    const on = SORT.key === c.key;
-    // `who` tren CA th va td, neu khong phan ghim o header va o than bang lech nhau.
-    const cls = `${c.num ? 'num ' : ''}${c.key === 'username' ? 'who ' : ''}sortable`;
-    return `<th class="${cls}" data-sort="${c.key}"
-      aria-sort="${on ? (SORT.dir === 1 ? 'ascending' : 'descending') : 'none'}">${esc(c.label)}<span
-      class="arrow">${on ? (SORT.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
+    // `who` tren ca th va td, neu khong phan ghim o header va o than bang lech nhau.
+    return metricHeader(c, 'creator', '', SORT);
   }).join('');
 
   // Cot ten: avatar + co canh bao. avatar_url nam san trong creator_profiles tu lau
@@ -479,22 +634,22 @@ let PSHOP = '';
 let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } };
 
 const PCOLS = [
-  { key: 'product_name',    label: 'Sản phẩm',      wide: true },
+  { key: 'product_name',    label: 'Product',       wide: true },
   { key: 'shop_name',       label: 'Shop' },
-  { key: 'gmv',             label: 'GMV ròng (ước tính)', num: true },
-  { key: 'orders',          label: 'Đơn hợp lệ',    num: true },
-  { key: 'items',           label: 'SP hợp lệ',     num: true },
-  { key: 'creators',        label: 'Số creator',    num: true },
-  { key: 'avg_rate',        label: '% HH chuẩn bình quân', num: true, unit: '%' },
-  { key: 'est_commission',  label: 'HH ước tính',   num: true },
+  { key: 'gmv',             label: 'Net GMV (Estimated)', num: true },
+  { key: 'orders',          label: 'Valid Orders',   num: true },
+  { key: 'items',           label: 'Valid Units',    num: true },
+  { key: 'creators',        label: 'Creators',       num: true },
+  { key: 'avg_rate',        label: 'Avg. Standard Commission Rate', num: true, unit: '%' },
+  { key: 'est_commission',  label: 'Estimated Commission', num: true },
 ];
 const SCOLS = [
   { key: 'shop_name',       label: 'Shop',          wide: true },
-  { key: 'gmv',             label: 'GMV ròng (ước tính)', num: true },
-  { key: 'orders',          label: 'Đơn hợp lệ',    num: true },
-  { key: 'products',        label: 'Sản phẩm',      num: true },
-  { key: 'creators',        label: 'Số creator',    num: true },
-  { key: 'est_commission',  label: 'HH ước tính',   num: true },
+  { key: 'gmv',             label: 'Net GMV (Estimated)', num: true },
+  { key: 'orders',          label: 'Valid Orders',   num: true },
+  { key: 'products',        label: 'Unique Products', num: true },
+  { key: 'creators',        label: 'Creators',       num: true },
+  { key: 'est_commission',  label: 'Estimated Commission', num: true },
 ];
 // Giong bang creator: ty le khong cong duoc nen dong tong de trong.
 const PSUMMABLE = new Set(['gmv', 'orders', 'items', 'est_commission']);
@@ -591,12 +746,7 @@ function renderProducts() {
   $('#p-count').textContent = `${vnd.format(rows.length)}/${vnd.format(all)} ${donVi}`;
   const sort = PSORT[PVIEW];
 
-  const head = cols.map(c => {
-    const on = sort.key === c.key;
-    return `<th class="${c.num ? 'num ' : ''}${c.wide ? 'wide ' : ''}sortable" data-sort="${c.key}"
-      aria-sort="${on ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}">${esc(c.label)}<span
-      class="arrow">${on ? (sort.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
-  }).join('');
+  const head = cols.map(c => metricHeader(c, PVIEW === 'products' ? 'product' : 'shop', '', sort)).join('');
 
   // Ten san pham TikTok dai hang tram ky tu -> cat bang CSS, giu nguyen van o title.
   const cell = (r, c) => c.num
@@ -643,7 +793,7 @@ function renderDaily() {
   const keys = KPI_ORDER.filter(k => m[k]?.available && !m[k].live && k !== 'creators_active');
   $('#t-daily').innerHTML = inPeriod().length ? `
     <thead><tr><th>Ngày</th>${keys.map(k =>
-      `<th class="num" title="${esc(m[k].label)}">${esc(shortLabel(k, m[k]))}</th>`).join('')}</tr></thead>
+      metricHeader({ key: k, label: shortLabel(k, m[k]), num: true, unit: m[k].unit }, 'daily')).join('')}</tr></thead>
     <tbody>${[...inPeriod()].reverse().map(d => `<tr><td class="nowrap" title="${esc(d.day)}">${esc(dayLabel(d.day))}</td>${
       keys.map(k => `<td class="num">${fmt(d[k], m[k].unit)}</td>`).join('')}</tr>`).join('')}</tbody>`
     : '<tbody><tr><td class="empty">Chưa kéo ngày nào.</td></tr></tbody>';
@@ -862,7 +1012,7 @@ async function openDrill(username) {
       <button class="btn ghost sm" id="drill-close" aria-label="Đóng">Đóng</button>
     </div>
     ${rows.length ? `<table><thead><tr><th>Ngày</th>${
-      keys.map(k => `<th class="num" title="${esc(m[k]?.label ?? k)}">${esc(shortLabel(k, m[k]))}</th>`).join('')
+      keys.map(k => metricHeader({ key: k, label: shortLabel(k, m[k]), num: true, unit: m[k]?.unit }, 'drill')).join('')
     }</tr></thead><tbody>${[...rows].reverse().map(r => `<tr>
       <td class="nowrap">${esc(dayLabel(r.day))}</td>${
       keys.map(k => `<td class="num">${fmt(r[k], m[k]?.unit)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
@@ -1110,6 +1260,7 @@ $('#c-alerts').addEventListener('click', (e) => {
 });
 
 $('#t-creators').addEventListener('click', (e) => {
+  if (e.target.closest('.metric-help')) return;
   const td = e.target.closest('tbody td');
   if (td && !td.closest('tr')?.querySelector('.empty')) {
     // Lay username tu o .who chu khong phai o dau tien: o dau tien gio la so thu tu.
@@ -1140,6 +1291,7 @@ $('#p-view').addEventListener('click', (e) => {
 });
 
 $('#t-products').addEventListener('click', (e) => {
+  if (e.target.closest('.metric-help')) return;
   const th = e.target.closest('th[data-sort]'); if (!th) return;
   const k = th.dataset.sort;
   const cur = PSORT[PVIEW];

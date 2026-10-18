@@ -257,6 +257,33 @@ select, input[type="search"], input[list] {
 }
 .info:hover, .info:focus-visible { background: var(--up-block-surface-muted); color: var(--up-color-primary); }
 
+.metric-help {
+  display: inline-grid; place-items: center; width: 15px; height: 15px;
+  margin-left: 4px; border: 0; border-radius: 50%;
+  background: var(--app-page); color: var(--up-block-muted-foreground);
+  font-size: 10px; font-weight: 600; line-height: 1; cursor: help;
+  vertical-align: 1px;
+}
+.metric-help:hover, .metric-help:focus-visible {
+  outline: 2px solid var(--up-color-primary); outline-offset: 1px;
+  background: var(--up-block-surface-muted); color: var(--up-color-primary);
+}
+#metric-tooltip {
+  position: fixed; z-index: 100;
+  width: min(440px, calc(100vw - 24px)); max-height: min(360px, calc(100vh - 24px));
+  padding: var(--s3) var(--s4); overflow: auto;
+  border: 1px solid var(--up-block-border); border-radius: var(--up-block-card-radius);
+  background: var(--up-block-surface); color: var(--up-block-foreground);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+  font-size: var(--app-text-xs); line-height: 1.45; pointer-events: none;
+}
+#metric-tooltip[hidden] { display: none; }
+.metric-tip-title { display: block; margin-bottom: var(--s2); color: var(--up-color-heading); font-size: var(--app-text-sm); }
+.metric-tip-item { display: grid; gap: 2px; margin-top: var(--s2); }
+.metric-tip-item b, .metric-tip-meta b { color: var(--up-block-muted-foreground); font-weight: 600; }
+.metric-tip-item code { padding: 2px var(--s2); border-radius: var(--s1); background: var(--app-page); overflow-wrap: anywhere; }
+.metric-tip-meta { margin-top: var(--s3); color: var(--up-block-muted-foreground); }
+
 .delta { display: inline-flex; align-items: center; gap: 2px; font-weight: 500; }
 .delta.up   { color: var(--app-good-ink); }
 .delta.down { color: var(--app-bad-ink); }
