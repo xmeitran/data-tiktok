@@ -31,20 +31,29 @@ const PARTS = ['estimated_standard_commission', 'estimated_bonus_commission',
 const ind = new Map();
 for (const r of rows) {
   const u = r.creator_username;
-  if (!ind.has(u)) ind.set(u, { gmv: 0, refund: 0, items: 0, hh: 0, base: 0, ok: new Set(), bad: new Set() });
+  if (!ind.has(u)) ind.set(u, {
+    gmv: 0, refund: 0, itemsGross: 0, itemsNet: 0, refundedItems: 0,
+    hhGross: 0, hhNet: 0, baseGross: 0, baseNet: 0,
+    all: new Set(), ok: new Set(), bad: new Set(),
+  });
   const x = ind.get(u);
   const gross = money(r.price) * (r.quantity || 0);
   x.gmv += gross;
+  x.all.add(r.id);
+  x.itemsGross += (r.quantity || 0);
+  x.baseGross += money(r.estimated_commission_base);
+  for (const k of PARTS) x.hhGross += money(r[k]);
   const ineligible = r.settle_status === 'INELIGIBLE';
   if (ineligible || r.fully_return === 'Yes') {
     x.refund += gross;
+    x.refundedItems += (r.quantity || 0);
     if (ineligible) x.bad.add(r.id);
     continue;
   }
   x.ok.add(r.id);
-  x.items += (r.quantity || 0);
-  x.base += money(r.estimated_commission_base);
-  for (const k of PARTS) x.hh += money(r[k]);
+  x.itemsNet += (r.quantity || 0);
+  x.baseNet += money(r.estimated_commission_base);
+  for (const k of PARTS) x.hhNet += money(r[k]);
 }
 
 const { byCreator } = aggregate(rows);
@@ -58,12 +67,17 @@ for (const [u, x] of ind) {
   assert.ok(near(p.net_gmv, x.gmv - x.refund), `${u}: net_gmv`);
   assert.equal(p.orders, x.ok.size, `${u}: orders`);
   assert.equal(p.refund_orders, x.bad.size, `${u}: refund_orders`);
-  assert.equal(p.items_sold, x.items, `${u}: items_sold`);
-  assert.ok(near(p.est_commission, x.hh), `${u}: est_commission`);
-  assert.ok(near(p.commission_base, x.base), `${u}: commission_base`);
-  const tong = x.ok.size + x.bad.size;
+  assert.equal(p.orders_all, x.all.size, `${u}: orders_all`);
+  assert.equal(p.items_sold, x.itemsGross, `${u}: items_sold`);
+  assert.equal(p.items_sold_net, x.itemsNet, `${u}: items_sold_net`);
+  assert.equal(p.refunded_items, x.refundedItems, `${u}: refunded_items`);
+  assert.ok(near(p.est_commission, x.hhGross), `${u}: est_commission`);
+  assert.ok(near(p.est_commission_net, x.hhNet), `${u}: est_commission_net`);
+  assert.ok(near(p.commission_base, x.baseGross), `${u}: commission_base`);
+  assert.ok(near(p.commission_base_net, x.baseNet), `${u}: commission_base_net`);
+  const tong = x.all.size;
   assert.ok(near(p.aov, tong ? x.gmv / tong : 0), `${u}: aov`);
-  assert.ok(near(p.commission_rate, x.base ? x.hh / x.base * 100 : 0), `${u}: commission_rate`);
+  assert.ok(near(p.commission_rate, x.baseGross ? x.hhGross / x.baseGross * 100 : 0), `${u}: commission_rate`);
   assert.ok(near(p.refund_rate, x.gmv ? x.refund / x.gmv * 100 : 0), `${u}: refund_rate`);
   checked++;
 }

@@ -50,7 +50,8 @@ export function alertsFor(c = {}, rules = RULES) {
   }
 
   // Hoàn cao: độc lập với tụt dốc. Một creator vừa bán tốt vừa hoàn 40% vẫn phải bị hỏi.
-  if (n(c.orders) + n(c.refund_orders) >= rules.minOrders && n(c.refund_rate) >= rules.refundPct) {
+  const allOrders = n(c.orders_all) || n(c.orders) + n(c.refund_orders);
+  if (allOrders >= rules.minOrders && n(c.refund_rate) >= rules.refundPct) {
     out.push({ level: 'warn', code: 'refund', text: `Hoàn ${n(c.refund_rate).toFixed(0)}% tiền` });
   }
 

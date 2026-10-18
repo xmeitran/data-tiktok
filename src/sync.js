@@ -132,8 +132,9 @@ export function aggregate(rows) {
 
     let a = acc.get(user);
     if (!a) {
-      a = { gmv: 0, refund: 0, items: 0, commission: 0, base: 0,
-            orderIds: new Set(), refundOrderIds: new Set(),
+      a = { gmv: 0, refund: 0, items: 0, netItems: 0, refundedItems: 0,
+            commission: 0, netCommission: 0, base: 0, netBase: 0,
+            allOrderIds: new Set(), orderIds: new Set(), refundOrderIds: new Set(),
             products: new Set(), shops: new Set(),
             videos: new Set(), lives: new Set() };
       acc.set(user, a);
@@ -146,12 +147,28 @@ export function aggregate(rows) {
     const qty = num(r.quantity);                       // da gom ca hang tra
     const gross = price.value * qty;
     a.gmv += gross;                                    // GMV la GROSS: gom ca don hoan
+    a.allOrderIds.add(r.id);                            // Affiliate Orders = ca don da hoan/huy
+    a.items += qty;                                     // TikTok quantity bao gom hang hoan
+
+    // Estimated commission/base cua cap_order la metric gross: docs TikTok van hien
+    // estimated commission cho ca refunded orders. Ban net duoc giu rieng ben duoi.
+    const base = money(r.estimated_commission_base);
+    bad += base.bad;
+    a.base += base.value;
+    for (const k of EST_COMMISSION_PARTS) {
+      const c = money(r[k]);
+      bad += c.bad;
+      if (c.currency) currencies.add(c.currency);
+      a.commission += c.value;
+    }
 
     // cap_order khong co returned_quantity/refunded_quantity -> chi bat duoc hoan TOAN PHAN.
     const ineligible = String(r.settle_status ?? '').toUpperCase() === INELIGIBLE;
-    const refunded = r.fully_return === 'Yes' || ineligible;
+    const fullyReturned = String(r.fully_return ?? '').toUpperCase() === 'YES';
+    const refunded = fullyReturned || ineligible;
     if (refunded) {
       a.refund += gross;
+      a.refundedItems += qty;
       // settle_status la trang thai cua CA DON, nen INELIGIBLE = ca don bi huy/hoan.
       // fully_return chi la cua mot dong SKU -> khong suy ra ca don bi huy.
       if (ineligible) a.refundOrderIds.add(r.id);
@@ -159,7 +176,7 @@ export function aggregate(rows) {
     }
 
     a.orderIds.add(r.id);
-    a.items += qty;
+    a.netItems += qty;
 
     // Cac chieu nay API van tra ve day du (da do: 100% dong co product_id/product_name/
     // shop_name/content_type). content_type = LIVE | VIDEO | SHOP, nen dem duoc so video va
@@ -172,30 +189,32 @@ export function aggregate(rows) {
       else if (t === 'LIVE') a.lives.add(r.content_id);
     }
 
-    const base = money(r.estimated_commission_base);
-    bad += base.bad;
-    a.base += base.value;
+    a.netBase += base.value;
 
     for (const k of EST_COMMISSION_PARTS) {
       const c = money(r[k]);
-      bad += c.bad;
-      if (c.currency) currencies.add(c.currency);
-      a.commission += c.value;
+      a.netCommission += c.value;
     }
   }
 
   const byCreator = new Map();
   for (const [user, a] of acc) {
     const orders = a.orderIds.size;
+    const ordersAll = a.allOrderIds.size;
     // Metric goc. Ba ty le (aov, commission_rate, refund_rate) tinh bang ratios() trong
     // metrics.js -- cung ham ma /api/summary, /api/daily va /api/creators dung, nen
     // khong con duong nao de bon cho lech cong thuc nhau nua.
     const t = {
       gmv: a.gmv,
       orders,
+      orders_all: ordersAll,
       items_sold: a.items,
+      items_sold_net: a.netItems ?? 0,
+      refunded_items: a.refundedItems,
       est_commission: a.commission,
+      est_commission_net: a.netCommission,
       commission_base: a.base,
+      commission_base_net: a.netBase,
       refund_amount: a.refund,
       refund_orders: a.refundOrderIds.size,
       net_gmv: a.gmv - a.refund,
@@ -216,14 +235,13 @@ export function aggregate(rows) {
   if (bad) warnings.push(`${bad} field tien khong parse duoc (da tinh la 0)`);
   if (currencies.size > 1) warnings.push(`tron nhieu currency: ${[...currencies].join(', ')} -- tong tien khong co y nghia`);
 
-  // Mau so cua AOV la orders + refund_orders, dung VI settle_status la trang thai cua CA
-  // DON nen hai tap phai roi nhau. Neu mot order_id lot vao ca hai thi gia dinh do sai va
-  // AOV dang dem doi don do -- khong tu suy dien lai so lieu, nhung PHAI noi ra, neu khong
-  // no la mot sai so am tham khong ai tim duoc.
+  // refund_orders va orders co the overlap neu API tra status theo SKU thay vi ca don.
+  // AOV da dung orders_all nen khong con dem doi, nhung van phai canh bao vi cac metric
+  // order/refund tach rieng se khong con la hai tap roi nhau.
   const overlap = [...acc.values()].reduce(
     (n, a) => n + [...a.refundOrderIds].filter(id => a.orderIds.has(id)).length, 0);
   if (overlap) {
-    warnings.push(`${overlap} don co ca dong INELIGIBLE va dong hop le -- settle_status khong con la trang thai cua ca don, mau so AOV dang dem doi cac don nay`);
+    warnings.push(`${overlap} don co ca dong INELIGIBLE va dong hop le -- settle_status khong con la trang thai cua ca don, orders/refund_orders co overlap`);
   }
 
   return { byCreator, warnings };

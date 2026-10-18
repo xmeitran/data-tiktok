@@ -72,14 +72,16 @@ let PERIOD = 7;                       // so ngay, null = tat ca
 // de test-period.mjs kiem duoc ma khong can DOM.
 const inPeriod = () => periods(DAILY, PERIOD).cur;
 const prevPeriod = () => periods(DAILY, PERIOD).prev;
-const SUM_KEYS = ['gmv','net_gmv','orders','items_sold','est_commission',
-                  'commission_base','refund_amount','refund_orders'];
+const SUM_KEYS = ['gmv','net_gmv','orders','orders_all','items_sold','items_sold_net',
+                  'refunded_items','est_commission','est_commission_net',
+                  'commission_base','commission_base_net','refund_amount','refund_orders'];
 // Cong metric goc roi TINH LAI ty le. Cong aov/ty le cua nhieu ngay lai la vo nghia.
 function totals(days) {
   const t = {};
   for (const k of SUM_KEYS) t[k] = days.reduce((a, d) => a + (Number(d[k]) || 0), 0);
   // Cung co so: gmv gom don huy -> mau so la TONG don. Hoa hong chia GOC hoa hong.
-  t.aov = (t.orders + t.refund_orders) ? t.gmv / (t.orders + t.refund_orders) : 0;
+  const allOrders = t.orders_all || (t.orders + t.refund_orders);
+  t.aov = allOrders ? t.gmv / allOrders : 0;
   t.commission_rate = t.commission_base ? (t.est_commission / t.commission_base) * 100 : 0;
   t.refund_rate = t.gmv ? (t.refund_amount / t.gmv) * 100 : 0;
   return t;
@@ -89,8 +91,10 @@ function totals(days) {
 // lam bang phinh ra phai cuon ngang; ten day du van con o tooltip va tab Metric.
 const SHORT = {
   creators_seen: 'Creator', creators_active: 'Creator có đơn', gmv: 'GMV gộp', net_gmv: 'GMV thực',
-  orders: 'Đơn hợp lệ', items_sold: 'SP bán', aov: 'AOV', est_commission: 'Hoa hồng',
-  commission_base: 'Gốc HH', commission_rate: '% hoa hồng',
+  orders: 'Đơn hợp lệ', orders_all: 'Affiliate orders', items_sold: 'SP bán (gộp)',
+  items_sold_net: 'SP bán thực', refunded_items: 'SP hoàn', aov: 'AOV gross',
+  est_commission: 'Hoa hồng (gộp)', est_commission_net: 'Hoa hồng sau hoàn',
+  commission_base: 'Gốc HH (gộp)', commission_base_net: 'Gốc HH sau hoàn', commission_rate: '% hoa hồng',
   refund_amount: 'Hoàn/huỷ', refund_orders: 'Đơn huỷ', refund_rate: '% hoàn (tiền)',
 };
 const shortLabel = (k, m) => SHORT[k] ?? m?.label ?? k;
@@ -130,12 +134,13 @@ $('#nav').addEventListener('click', (e) => {
 });
 
 // ---------- Tong quan ----------
-// 13 the cao bang nhau, cung co chu, cung sac do = khong the biet nhin cai nao truoc.
+// Cac the cao bang nhau, cung co chu, cung sac do = khong the biet nhin cai nao truoc.
 // Chia hai muc: 4 con so tra loi "ky nay the nao", con lai la chi tiet de doi chieu.
 // Thu tu trong moi muc la thu tu doc, khong phai thu tu trong registry.
-const KPI_CHINH = ['net_gmv', 'orders', 'est_commission', 'creators_active'];
+const KPI_CHINH = ['net_gmv', 'orders_all', 'est_commission', 'creators_active'];
 const KPI_PHU   = ['gmv', 'refund_amount', 'refund_orders', 'refund_rate',
-                   'aov', 'items_sold', 'commission_base', 'commission_rate', 'creators_seen'];
+                   'aov', 'items_sold', 'items_sold_net', 'refunded_items',
+                   'commission_base', 'commission_rate', 'creators_seen'];
 const KPI_ORDER = [...KPI_CHINH, ...KPI_PHU];
 
 // Metric tu uy quyen CREATOR. CO Y khong cho vao KPI_ORDER/SUM_KEYS: API creator khong tra
@@ -292,7 +297,7 @@ let ALERT_FILTER = '';            // '' = tat ca; hoac stopped|drop|refund|rise
 // Bo "Gon" la nhung cot du de QUYET DINH; bo day du van con nguyen cho ai can doi chieu.
 // MANG chu khong phai Set: day la thu tu DOC (ai -> ban duoc bao nhieu -> bao nhieu don
 // -> moi don bao nhieu -> minh an bao nhieu -> co van de gi khong), khong phai thu tu khai bao.
-const CCOLS_GON = ['username', 'alerts', 'net_gmv', 'orders', 'aov', 'est_commission', 'refund_rate'];
+const CCOLS_GON = ['username', 'alerts', 'net_gmv', 'orders_all', 'aov', 'est_commission', 'refund_rate'];
 let CVIEW = 'gon';                // gon | day-du
 
 // `delta: true` = cot co so sanh voi ky truoc ngay duoi con so.
@@ -308,16 +313,23 @@ const CCOLS = [
   { key: 'refund_orders',   label: 'Đơn huỷ',      num: true },
   { key: 'refund_rate',     label: '% hoàn (tiền)', num: true, unit: '%' },
   { key: 'orders',          label: 'Đơn hợp lệ',   num: true , delta: true },
-  { key: 'items_sold',      label: 'SP bán',       num: true },
-  { key: 'aov',             label: 'AOV',          num: true },
-  { key: 'commission_base', label: 'Gốc hoa hồng', num: true },
-  { key: 'est_commission',  label: 'Hoa hồng',     num: true , delta: true },
+  { key: 'orders_all',      label: 'Affiliate orders', num: true, delta: true },
+  { key: 'items_sold',      label: 'SP bán gộp',   num: true },
+  { key: 'items_sold_net',  label: 'SP bán thực',  num: true },
+  { key: 'refunded_items',  label: 'SP hoàn',      num: true },
+  { key: 'aov',             label: 'AOV gross',     num: true },
+  { key: 'commission_base', label: 'Gốc HH gộp',   num: true },
+  { key: 'commission_base_net', label: 'Gốc HH sau hoàn', num: true },
+  { key: 'est_commission',  label: 'Hoa hồng gộp', num: true , delta: true },
+  { key: 'est_commission_net', label: 'Hoa hồng sau hoàn', num: true },
   { key: 'commission_rate', label: '% hoa hồng',   num: true, unit: '%' },
   { key: 'first_seen',      label: 'Thấy đầu',     num: false },
   { key: 'last_seen',       label: 'Thấy cuối',    num: false },
 ];
 // Ty le khong cong duoc -> dong tong de trong, thay vi cong bay ra so vo nghia.
-const SUMMABLE = new Set(['days','gmv','net_gmv','refund_amount','refund_orders','orders','items_sold','commission_base','est_commission']);
+const SUMMABLE = new Set(['days','gmv','net_gmv','refund_amount','refund_orders','orders','orders_all',
+  'items_sold','items_sold_net','refunded_items','commission_base','commission_base_net',
+  'est_commission','est_commission_net']);
 
 const ccols = () => CVIEW === 'gon'
   ? CCOLS_GON.map(k => CCOLS.find(c => c.key === k)).filter(Boolean)
@@ -748,11 +760,11 @@ const covEta = (left) => eta(left, COV?.days_10m ?? 0, COV?.running);
 
 function renderCoverage() {
   const el = $('#cov-live'); if (!el || !COV) return;
-  const { cal, cur, pending, has, miss } = covParts();
+  const { cal, cur, pending, unpulled, has, miss } = covParts();
   if (!cal.length) { el.innerHTML = ''; return; }
 
   const pct = (has.length / cal.length) * 100;
-  const left = miss.length + pending.size;
+  const left = miss.length + pending.size + unpulled.length;
   const beat = COV.running?.since_beat;
   // Job dap nhip sau MOI ngay keo xong, nen khoang cach nhip = thoi gian keo mot ngay:
   // ~1 phut ngay thuong, ~4 phut ngay sale 42k dong. Nguong 8 phut nam tren muc do va
@@ -763,6 +775,7 @@ function renderCoverage() {
   const tag = COV.running
     ? `<span class="tag ${stale ? 'warn' : 'grp'}">${stale ? `đang im ${Math.round(beat / 60)} phút` : 'đang kéo'}</span>`
     : miss.length ? `<span class="tag warn">thiếu ${miss.length} ngày</span>`
+                  : unpulled.length ? `<span class="tag grp">chưa kéo ${unpulled.length} ngày</span>`
                   : '<span class="tag ok">đủ ngày</span>';
 
   // Thang la don vi nguoi doc dung de noi "thang 7 bi khuyet", nen chia theo thang.
@@ -773,11 +786,11 @@ function renderCoverage() {
     months.get(k).push(d);
   }
   const cls = (d) => d.rows ? (d.day === cur ? 'c-now' : 'c-has')
-                            : pending.has(d.day) ? 'c-wait' : 'c-miss';
+                            : pending.has(d.day) || unpulled.some(x => x.day === d.day) ? 'c-wait' : 'c-miss';
   const cal_html = [...months].map(([k, list]) => `<div class="cal-m">
       <span class="cal-ml">${k.slice(5)}/${k.slice(2, 4)}</span>
       <div class="cal-d">${list.map(d => `<span class="c ${cls(d)}" title="${esc(d.day)} · ${
-        d.rows ? `${fmt(d.rows)} dòng` : pending.has(d.day) ? 'chưa kéo tới' : 'THIẾU'}"></span>`).join('')}</div>
+        d.rows ? `${fmt(d.rows)} dòng` : pending.has(d.day) || unpulled.some(x => x.day === d.day) ? 'chưa kéo tới' : 'THIẾU'}"></span>`).join('')}</div>
     </div>`).join('');
 
   // Danh sach ngay thieu bang CHU: o vuong khong doc duoc bang ban phim, va day cung la
@@ -799,6 +812,7 @@ function renderCoverage() {
       ${COV.running ? ` · đang kéo <b>${esc(cur ?? '—')}</b> · nhịp ${beat}s trước
         ${left ? `· ${esc(covEta(left))}` : ''}` : ''}
       ${miss.length ? ` · <span class="warn-text">khuyết ${miss.length} ngày</span>` : ''}
+      ${unpulled.length ? ` · <span class="muted">chưa kéo ${unpulled.length} ngày</span>` : ''}
     </p>
     <div class="cal" aria-hidden="true">${cal_html}</div>
     <div class="cov-legend" aria-hidden="true">

@@ -289,8 +289,9 @@ app.get('/api/creators', async (req, res, next) => {
                    and v.period_start <= ${ORDER_DAY} - $1::int)`;
     // Mot metric, hai ky -> hai cot. Viet tay 8 cap la 16 dong gan giong nhau, va sua
     // mot cai quen cai kia; sinh ra tu danh sach thi khong lech duoc.
-    const SUMS = ['gmv', 'net_gmv', 'orders', 'items_sold',
-                  'est_commission', 'commission_base', 'refund_amount', 'refund_orders'];
+    const SUMS = ['gmv', 'net_gmv', 'orders', 'orders_all', 'items_sold',
+                  'items_sold_net', 'refunded_items', 'est_commission', 'est_commission_net',
+                  'commission_base', 'commission_base_net', 'refund_amount', 'refund_orders'];
     const col = (k, when, as) =>
       `coalesce(sum(v.value) filter (where v.metric_key='${k}' and ${when}),0)::float ${as}`;
 
@@ -503,7 +504,8 @@ app.get('/api/coverage', async (req, res, next) => {
          from sync_runs where status = 'running' order by id desc limit 1`),
       // Nhip do thuc te de giao dien tu tinh ETA: khong doan bang hang so, ngay nang
       // (40k dong) cham gap 4 lan ngay nhe.
-      q(`select (select day::text from sku_orders order by collected_at desc limit 1) dang_keo,
+      q(`select max(day)::text latest_day,
+                (select day::text from sku_orders order by collected_at desc limit 1) dang_keo,
                 count(distinct day)::int days_10m, count(*)::int rows_10m
          from sku_orders where collected_at > now() - interval '10 minutes'`),
     ]);

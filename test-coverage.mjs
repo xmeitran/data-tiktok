@@ -6,29 +6,32 @@ const d = (day, rows = 0) => ({ day, rows });
 const days = (list) => list.map(x => Array.isArray(x) ? d(...x) : d(x));
 const RUN = { id: '89' };
 
-// 1. Khong co job nao chay: moi ngay rong deu la thieu that -- khong ai dang di lap no.
+// 1. Khong co job: gap truoc ngay raw moi nhat la missing, ngay sau do la unpulled.
 {
   const cal = days([['2026-01-01', 10], '2026-01-02', ['2026-01-03', 5], '2026-01-04']);
-  const r = classify(cal, { dang_keo: null, running: null });
+  const r = classify(cal, { dang_keo: null, latest_day: '2026-01-03', running: null });
   assert.equal(r.has.length, 2);
-  assert.deepEqual(r.miss.map(x => x.day), ['2026-01-02', '2026-01-04']);
+  assert.deepEqual(r.miss.map(x => x.day), ['2026-01-02']);
+  assert.deepEqual(r.unpulled.map(x => x.day), ['2026-01-04']);
   assert.equal(r.pending.size, 0);
 }
 
 // 2. Dang chay: sau con tro la "chua keo toi", truoc con tro ma rong la bi bo lai.
 {
   const cal = days([['2026-01-01', 9], '2026-01-02', ['2026-01-03', 9], '2026-01-04', '2026-01-05']);
-  const r = classify(cal, { dang_keo: '2026-01-03', running: RUN });
+  const r = classify(cal, { dang_keo: '2026-01-03', latest_day: '2026-01-03', running: RUN });
   assert.deepEqual(r.miss.map(x => x.day), ['2026-01-02'], 'ngay truoc con tro = thieu');
   assert.deepEqual([...r.pending], ['2026-01-04', '2026-01-05'], 'ngay sau con tro = chua toi');
+  assert.equal(r.unpulled.length, 0);
 }
 
 // 3. Dang chay nhung chua ghi dong nao (dang_keo null): khong duoc doan bua thanh "chua toi",
 //    vi khong biet job dang o dau. Bao thieu con hon bao yen gia.
 {
   const cal = days(['2026-01-01', '2026-01-02']);
-  const r = classify(cal, { dang_keo: null, running: RUN });
+  const r = classify(cal, { dang_keo: null, latest_day: null, running: RUN });
   assert.equal(r.miss.length, 2);
+  assert.equal(r.unpulled.length, 0);
   assert.equal(r.pending.size, 0);
 }
 
@@ -36,9 +39,10 @@ const RUN = { id: '89' };
 {
   const cal = days([['2026-01-01', 1], '2026-01-02', ['2026-01-03', 1], '2026-01-04',
                     ['2026-01-05', 1]]);   // 05 co data san tu lan keo 7 ngay truoc do
-  const r = classify(cal, { dang_keo: '2026-01-03', running: RUN });
+  const r = classify(cal, { dang_keo: '2026-01-03', latest_day: '2026-01-05', running: RUN });
   assert.deepEqual(r.miss.map(x => x.day), ['2026-01-02']);
   assert.deepEqual([...r.pending], ['2026-01-04']);
+  assert.equal(r.unpulled.length, 0);
   assert.equal(r.has.length, 3, 'ngay da co data van tinh la co, du nam sau con tro');
 }
 

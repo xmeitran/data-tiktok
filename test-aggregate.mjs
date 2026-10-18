@@ -62,12 +62,17 @@ assert.deepEqual([...byCreator.keys()].sort(), ['creator_a', 'creator_b']);
 
 const a = byCreator.get('creator_a');
 assert.equal(a.orders, 1, '2 dong chung id = 1 don; don INELIGIBLE khong dem; dong lap bi bo');
+assert.equal(a.orders_all, 2, 'orders_all dem ca don hop le va don INELIGIBLE');
 assert.equal(a.gmv, 91992 + 100000 + 30000, 'GROSS gom ca don huy; dong lap khong cong doi');
 assert.equal(a.refund_amount, 30000, 'don INELIGIBLE');
 assert.equal(a.net_gmv, 191992);
-assert.equal(a.items_sold, 3, '1 + 2, don huy khong tinh');
-assert.equal(a.est_commission, 14719 + 16000, 'don huy khong tinh hoa hong');
-assert.equal(a.commission_base, 91992 + 100000);
+assert.equal(a.items_sold, 4, 'items_sold gross gom ca quantity bi huy');
+assert.equal(a.items_sold_net, 3, 'items_sold_net loai quantity bi huy');
+assert.equal(a.refunded_items, 1, 'refunded_items dem quantity bi huy');
+assert.equal(a.est_commission, 14719 + 16000 + 4800, 'est_commission gross gom ca estimated cua don huy');
+assert.equal(a.est_commission_net, 14719 + 16000, 'est_commission_net loai don huy');
+assert.equal(a.commission_base, 91992 + 100000 + 30000, 'commission_base gross gom ca don huy');
+assert.equal(a.commission_base_net, 91992 + 100000);
 // AOV phai dung CUNG CO SO: gmv gom ca don huy nen mau so la TONG don (1 hop le + 1 huy).
 assert.equal(a.aov, 110996, 'gmv / (orders + refund_orders), KHONG phai gmv/orders');
 assert.notEqual(a.aov, a.gmv / a.orders, 'khong duoc chia cho rieng don hop le');
@@ -76,10 +81,16 @@ assert.equal(a.refund_orders, 1, 'don INELIGIBLE duoc dem la don huy');
 
 const b = byCreator.get('creator_b');
 assert.equal(b.orders, 1, "fully_return='Yes' khong dem la don");
+assert.equal(b.orders_all, 2, "orders_all dem ca don fully_return");
 assert.equal(b.gmv, 20000 + 30000);
 assert.equal(b.refund_amount, 20000);
-assert.equal(b.items_sold, 3);
-assert.equal(b.est_commission, 4800 + 200, 'cong ca estimated_bonus_commission');
+assert.equal(b.items_sold, 4, 'items_sold gross gom ca dong fully_return');
+assert.equal(b.items_sold_net, 3);
+assert.equal(b.refunded_items, 1);
+assert.equal(b.est_commission, 3200 + 4800 + 200, 'gross commission gom ca dong fully_return');
+assert.equal(b.est_commission_net, 4800 + 200, 'net commission loai dong fully_return');
+assert.equal(b.commission_base, 20000 + 30000);
+assert.equal(b.commission_base_net, 30000);
 assert.equal(Number(b.refund_rate.toFixed(2)), 40);
 assert.equal(b.refund_orders, 0, "fully_return='Yes' tren don SETTLED KHONG phai don huy ca don");
 
@@ -94,6 +105,9 @@ assert.equal(only.creators_active, 0, 'thay nhung khong co don hop le');
 // Trang thai "toan don huy" the hien o orders = 0 va refund_rate = 100%, khong phai o AOV.
 assert.equal(only.aov, 1000, 'AOV tinh tren TONG don, don huy van co gia tri');
 assert.equal(only.orders, 0, 'khong co don hop le nao');
+assert.equal(only.orders_all, 1);
+assert.equal(only.est_commission, 160);
+assert.equal(only.est_commission_net, 0);
 assert.equal(only.refund_orders, 1, 'chi co don huy van dem duoc');
 
 // Tron currency thi tong tien vo nghia -> phai canh bao
@@ -135,6 +149,10 @@ assert.equal(dim.shops_sold, 2, 'Shop 1 + Shop 2; Shop huy bi loai');
 assert.equal(dim.videos_with_orders, 1, 'v1 xuat hien o 2 dong SKU -> 1 video; v-huy bi loai');
 assert.equal(dim.lives_with_orders, 1);
 assert.equal(dim.orders, 3, 'd1,d2,d3 hop le; d4 huy');
+assert.equal(dim.orders_all, 4, 'orders_all gom ca d4');
+assert.equal(dim.items_sold, 5, 'items_sold gross gom ca d4');
+assert.equal(dim.items_sold_net, 4, 'items_sold_net loai d4');
+assert.equal(dim.refunded_items, 1);
 
 // --- ratios(): MOT ham duy nhat cho ca 4 cho hien thi -----------------------
 // Truoc day cong thuc duoc viet lai o aggregate, /api/summary, /api/daily va
@@ -187,6 +205,15 @@ assert.match(split.warnings.join(' '), /settle_status khong con la trang thai cu
 const e = split.byCreator.get('e');
 assert.equal(e.orders, 1);
 assert.equal(e.refund_orders, 1, 'cung mot order_id dem o ca hai ben -> day la cai duoc bao');
+assert.equal(e.orders_all, 1, 'orders_all khong dem doi order co nhieu dong status');
+assert.equal(e.aov, 2000, 'AOV dung orders_all nen khong dem doi order mixed status');
+
+const lowerCaseReturn = aggregate([
+  row({ id: 'lc1', creator_username: 'lower', settle_status: 'SETTLED', fully_return: 'yes',
+        price: M(1000), quantity: 1 }),
+]).byCreator.get('lower');
+assert.equal(lowerCaseReturn.orders, 0, 'fully_return khong phu thuoc chu hoa-thuong');
+assert.equal(lowerCaseReturn.refunded_items, 1);
 
 // Du lieu binh thuong (settle_status dung la cua ca don) thi KHONG duoc bao gi.
 assert.equal(aggregate([

@@ -11,7 +11,8 @@ export const q = (text, params) => pool.query(text, params);
 // de sua mot cho la cac cho doc DB doi theo. Ban JS trong sync.js van rieng, test-raw.mjs
 // la thu bat duoc khi hai ben lech nhau.
 export const VALID_ROW =
-  `settle_status is distinct from 'INELIGIBLE' and fully_return is distinct from 'Yes'`;
+  `coalesce(upper(settle_status), '') <> 'INELIGIBLE'
+   and coalesce(upper(fully_return), '') <> 'YES'`;
 
 // Mốc "ngày dữ liệu mới nhất". PHẢI tính trên metric ĐƠN, không phải trên cả bảng
 // metric_values: sync-creator ghi metric ảnh chụp vào HÔM NAY (trạng thái hiện tại,
