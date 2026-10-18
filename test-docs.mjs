@@ -39,12 +39,18 @@ same('REQUEST.page_token', REQUEST.page_token.en, live.get('q:page_token'));
 same('REQUEST.create_time_ge', REQUEST.create_time_ge.en, live.get('b:create_time_ge'));
 same('REQUEST.create_time_lt', REQUEST.create_time_lt.en, live.get('b:create_time_lt'));
 same('API.cap_order_search', API.cap_order_search.en, clean(cap.env_desc));
+assert.equal(API.cap_order_search.docUrl,
+  'https://partner.tiktokshop.com/docv2/page/search-cap-affiliate-orders-202603',
+  'API.cap_order_search: sai link tai lieu chinh thuc');
 
 assert.equal(API.cap_order_search.path, cap.interface_path, 'duong dan endpoint da doi');
 assert.equal(API.cap_order_search.scope.key, (cap.scope_list ?? [])[0]?.scope_key, 'scope da doi');
 
 const ca = await meta('get-authorized-category-assets-202405');
 assert.equal(API.category_assets.path, ca.interface_path, 'duong dan category_assets da doi');
+assert.equal(API.category_assets.docUrl,
+  'https://partner.tiktokshop.com/docv2/page/get-authorized-category-assets-202405',
+  'API.category_assets: sai link tai lieu chinh thuc');
 
 // --- Nhom Affiliate CREATOR. Trong cung mot doc co hang loat truong trung ten la
 // (`id`, `status`, `rate`, `currency`) nen KHONG the doi chieu theo ten la nhu cap_order:
@@ -66,6 +72,9 @@ for (const [key, api] of Object.entries(CREATOR_API)) {
   const m = await meta(api.docId);
   assert.equal(api.path, m.interface_path, `${key}: duong dan endpoint da doi`);
   assert.equal(api.scope.key, (m.scope_list ?? [])[0]?.scope_key, `${key}: scope da doi`);
+  assert.equal(api.docUrl,
+    `https://partner.tiktokshop.com/docv2/page/${api.docId}`,
+    `${key}: sai link tai lieu chinh thuc`);
   // api_meta ma hoa method bang so: 1 = POST, 2 = GET. Goi sai method thi ky bi lech
   // (chu ky tinh ca body) nen phai bat o day.
   assert.equal(api.method, m.method === 1 ? 'POST' : 'GET', `${key}: HTTP method da doi`);

@@ -20,6 +20,7 @@
     <div class="side-brand">TikTok Partner<span class="dot">.</span><br><small>Metrics cho MCN</small></div>
     <nav id="nav" aria-label="Khu vực">
       <button data-tab="hieu-suat" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h5v8H3zM10 3h5v18h-5zM17 9h5v12h-5z"/></svg><span>Hiệu suất</span></button>
+      <button data-tab="creator-data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM4 21a8 8 0 0 1 16 0h-2a6 6 0 0 0-12 0H4zM19 3h2v5h-2zM18 10h4v2h-4z"/></svg><span>Creator Data</span></button>
       <button data-tab="creator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0z"/></svg><span>Creator</span></button>
       <button data-tab="san-pham"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6.5v11L12 22l9-4.5v-11L12 2zm0 2.3 6.4 3.2L12 10.7 5.6 7.5 12 4.3zM5 9.3l6 3v7.1l-6-3V9.3zm8 10.1v-7.1l6-3v7.1l-6 3z"/></svg><span>Sản phẩm</span></button>
       <button data-tab="chi-so"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2H4zM4 11h16v2H4zM4 18h10v2H4z"/></svg><span>Chỉ số</span></button>
@@ -64,7 +65,7 @@
              TỰ bấm link của chính mình. Gửi link dưới cho creator, họ bấm xong thì kéo số.</p>
           <div class="row">
             <button class="btn ghost" id="btn-link-creator" data-role="creator">Lấy link uỷ quyền creator</button>
-            <button class="btn ghost" id="btn-sync-creator">Kéo dữ liệu creator</button>
+            <button class="btn ghost" id="btn-sync-creator">Sync Creator Data</button>
           </div>
           <div id="link-out"></div>
         </div>
@@ -98,6 +99,25 @@
           <div class="kpis" id="kpis-na"></div>
         </details>
 
+      </section>
+
+      <section id="tab-creator-data" class="hide" role="tabpanel" aria-label="Creator Data">
+        <div class="sec-head">
+          <h1>Creator Data</h1>
+          <button class="btn" id="btn-sync-creator-data">Sync Creator Data</button>
+        </div>
+        <p class="sub">Dữ liệu lấy bằng token creator sau khi họ uỷ quyền cho app. Đây là ảnh chụp trạng thái hiện tại, không phải số liệu theo kỳ.</p>
+        <div id="creator-data-status" role="status" aria-live="polite"></div>
+        <div class="kpis creator-data-kpis" id="creator-data-kpis"></div>
+        <div class="sec-head creator-data-list-head">
+          <h2>Authorized creator snapshots</h2>
+          <div class="search creator-data-search">
+            <input type="search" id="creator-data-q" placeholder="Search creator…" aria-label="Search authorized creator" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+          <span class="count" id="creator-data-count" aria-live="polite"></span>
+        </div>
+        <div class="card table-card"><table id="t-creator-data"></table></div>
       </section>
 
       <section id="tab-creator" class="hide" role="tabpanel" aria-label="Creator">

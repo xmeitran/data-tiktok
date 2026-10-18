@@ -326,6 +326,62 @@ app.get('/api/creators', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Du lieu rieng cua luong uy quyen creator. Khac /api/creators: endpoint kia phuc vu
+// bang phan tich don theo ky, con endpoint nay lay ANH CHUP moi nhat cua tung creator
+// tu token creator (profile, sample, showcase, target collaboration).
+app.get('/api/creator-data', async (_req, res, next) => {
+  const keys = ['sample_requests', 'samples_completed', 'showcase_products', 'target_collaborations'];
+  try {
+    const [data, last] = await Promise.all([
+      q(`
+        with profile as (
+          select distinct on (creator_open_id)
+                 creator_open_id, username, avatar_url, selection_region, register_region
+            from creator_profiles
+           order by creator_open_id, collected_at desc
+        ), snapshot as (
+          select distinct on (creator_username, metric_key)
+                 creator_username, metric_key, period_start::text snapshot_day,
+                 value::float8 value
+            from metric_values
+           where metric_key = any($1::text[])
+           order by creator_username, metric_key, period_start desc, collected_at desc
+        )
+        select a.open_id, a.status, a.authorized_at, a.access_expire_at,
+               p.username, p.avatar_url, p.selection_region, p.register_region,
+               max(s.snapshot_day) as snapshot_day,
+               max(s.value) filter (where s.metric_key = 'sample_requests') as sample_requests,
+               max(s.value) filter (where s.metric_key = 'samples_completed') as samples_completed,
+               max(s.value) filter (where s.metric_key = 'showcase_products') as showcase_products,
+               max(s.value) filter (where s.metric_key = 'target_collaborations') as target_collaborations
+          from authorizations a
+          left join profile p on p.creator_open_id = a.open_id
+          left join snapshot s on s.creator_username = p.username
+         where a.role = 'creator'
+         group by a.open_id, a.status, a.authorized_at, a.access_expire_at,
+                  p.username, p.avatar_url, p.selection_region, p.register_region
+         order by (a.status = 'active') desc, a.authorized_at desc
+      `, [keys]),
+      q(`select * from sync_runs where note like 'creator sync%' order by id desc limit 1`),
+    ]);
+
+    const rows = data.rows;
+    const sum = (key) => rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+    res.json({
+      rows,
+      totals: {
+        authorized_creators: rows.filter(row => row.status === 'active').length,
+        synced_creators: rows.filter(row => row.snapshot_day).length,
+        sample_requests: sum('sample_requests'),
+        samples_completed: sum('samples_completed'),
+        showcase_products: sum('showcase_products'),
+        target_collaborations: sum('target_collaborations'),
+      },
+      lastSync: last.rows[0] ?? null,
+    });
+  } catch (e) { next(e); }
+});
+
 // Dien bien theo ngay cua MOT creator. Truoc day khong co duong nao nhin mot creator
 // theo thoi gian, chi co tong cong ca ky.
 app.get('/api/creator-daily', async (req, res, next) => {

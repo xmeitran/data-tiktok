@@ -256,6 +256,7 @@ select, input[type="search"], input[list] {
   font-size: 10px; cursor: help; border: 0;
 }
 .info:hover, .info:focus-visible { background: var(--up-block-surface-muted); color: var(--up-color-primary); }
+.info:focus-visible { outline: 2px solid var(--up-color-primary); outline-offset: 2px; }
 
 .metric-help {
   display: inline-grid; place-items: center; width: 15px; height: 15px;
@@ -283,6 +284,11 @@ select, input[type="search"], input[list] {
 .metric-tip-item b, .metric-tip-meta b { color: var(--up-block-muted-foreground); font-weight: 600; }
 .metric-tip-item code { padding: 2px var(--s2); border-radius: var(--s1); background: var(--app-page); overflow-wrap: anywhere; }
 .metric-tip-meta { margin-top: var(--s3); color: var(--up-block-muted-foreground); }
+.metric-tip-note { margin-top: var(--s2); }
+.metric-tip-vi {
+  display: grid; gap: 2px; padding-top: var(--s1);
+  color: var(--up-block-muted-foreground); font-size: 11px;
+}
 
 .delta { display: inline-flex; align-items: center; gap: 2px; font-weight: 500; }
 .delta.up   { color: var(--app-good-ink); }
@@ -375,6 +381,19 @@ th .arrow { display: inline-block; width: 1em; color: var(--up-color-primary); }
 
 /* ===== Xep hang + canh bao creator ========================================= */
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+#c-alerts {
+  display: grid; grid-template-columns: minmax(150px, auto) minmax(0, 1fr);
+  align-items: center; column-gap: var(--s4); row-gap: var(--s2);
+  padding: var(--s3) var(--s4); border: 1px solid var(--up-block-border);
+  border-radius: var(--up-block-card-radius); background: var(--up-block-surface);
+}
+.alert-filter-top { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alert-filter-title { color: var(--up-color-heading); font-size: var(--app-text-sm); font-weight: 600; }
+.alert-filter-title span, .alert-filter-period {
+  color: var(--up-block-muted-foreground); font-size: var(--app-text-xs); font-weight: 400;
+}
+.alert-filter-period { white-space: nowrap; }
+.alert-filter-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
 .chip-f {
   display: inline-flex; align-items: center; gap: var(--s2);
   min-height: 32px; padding: 0 var(--s3); border-radius: 999px; cursor: pointer;
@@ -383,18 +402,26 @@ th .arrow { display: inline-block; width: 1em; color: var(--up-color-primary); }
   transition: background-color var(--up-block-transition-duration) var(--up-block-transition-ease);
 }
 .chip-f:hover { border-color: var(--color--neutral--400); }
-.chip-f span {
+.chip-f .chip-count {
   min-width: 1.5em; padding: 0 5px; border-radius: 999px; text-align: center;
   background: var(--app-page); font-size: 11px; font-variant-numeric: tabular-nums;
 }
 .chip-f[aria-pressed="true"], .chip-f.on { border-color: currentColor; font-weight: 500; }
+.chip-f:not(.bad):not(.warn):not(.good).on { background: var(--up-block-sidebar-accent); }
 .chip-f.bad  { color: var(--app-bad-ink); }
 .chip-f.warn { color: var(--app-warn-ink); }
 .chip-f.good { color: var(--app-good-ink); }
-.chip-f.bad  span { background: var(--app-bad-soft); }
-.chip-f.warn span { background: var(--app-warn-soft); }
-.chip-f.good span { background: var(--app-good-soft); }
-.alert-why { flex-basis: 100%; }
+.chip-f.bad  .chip-count { background: var(--app-bad-soft); }
+.chip-f.warn .chip-count { background: var(--app-warn-soft); }
+.chip-f.good .chip-count { background: var(--app-good-soft); }
+.chip-f.bad.on { background: var(--app-bad-soft); border-color: var(--app-bad); }
+.chip-f.warn.on { background: var(--app-warn-soft); border-color: var(--app-warn); }
+.chip-f.good.on { background: var(--app-good-soft); border-color: var(--app-good); }
+.alert-why {
+  grid-column: 1 / -1; max-width: none; padding-top: var(--s2);
+  border-top: 1px solid var(--app-line-soft); font-size: 11px;
+}
+.alert-why-label { margin-right: var(--s1); color: var(--up-block-foreground); font-weight: 600; }
 
 th.rank, td.rank {
   /* `width: 1%` co thu cot lai vua khit, nhung KHONG chan ngat dong -- nen "10" bi
@@ -411,10 +438,26 @@ th.rank, td.rank {
 .who-t { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-width: 0; }
 .flags { display: inline-flex; gap: var(--s1); flex-wrap: wrap; }
 /* O canh bao: nhieu co thi xuong dong trong CHINH o do, khong lan sang cot ben. */
-td.flags-cell { max-width: 210px; }
-.flags-in { display: flex; flex-wrap: wrap; gap: var(--s1); }
+th[data-sort="alerts"], td.flags-cell {
+  /* `width` alone loses to the table's auto layout when the other metric columns
+   * compete for space. The minimum keeps two compact badges on one readable line. */
+  min-width: 204px; width: 204px; max-width: 204px;
+}
+td.flags-cell { padding-inline: var(--s2); }
+.flags-in { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); min-width: 0; }
 .flags-in .muted { font-size: var(--app-text-xs); }
-.flag { padding: 1px var(--s2); border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.flag {
+  position: relative; display: inline-flex; align-items: center; gap: 5px;
+  min-height: 23px; padding: 2px var(--s2); border: 1px solid transparent;
+  border-radius: var(--s2); font-size: 11px; line-height: 1.2; white-space: nowrap;
+}
+.flag::before {
+  content: ''; width: 5px; height: 5px; flex: none; border-radius: 50%; background: currentColor;
+}
+.flag[data-code="drop"]::before { content: '↓'; width: auto; height: auto; background: none; font-size: 12px; font-weight: 700; }
+.flag[data-code="rise"]::before { content: '↑'; width: auto; height: auto; background: none; font-size: 12px; font-weight: 700; }
+.flag[data-code="stopped"]::before { content: '–'; width: auto; height: auto; background: none; font-size: 12px; font-weight: 700; }
+.flag[data-code="refund"]::before { content: '!'; width: auto; height: auto; background: none; font-size: 11px; font-weight: 700; }
 .flag.bad  { background: var(--app-bad-soft);  color: var(--app-bad-ink); }
 .flag.warn { background: var(--app-warn-soft); color: var(--app-warn-ink); }
 .flag.good { background: var(--app-good-soft); color: var(--app-good-ink); }
@@ -454,7 +497,7 @@ tbody tr.row-good td.rank { box-shadow: inset 3px 0 0 var(--app-good); }
 .mx-list {
   display: flex; flex-direction: column; gap: 2px;
   max-height: 70svh; overflow-y: auto;
-  padding: var(--s2); border: 1px solid var(--up-block-border);
+  min-width: 0; padding: var(--s2); border: 1px solid var(--up-block-border);
   border-radius: var(--up-block-card-radius); background: var(--up-block-surface);
 }
 .mx-grp {
@@ -462,14 +505,21 @@ tbody tr.row-good td.rank { box-shadow: inset 3px 0 0 var(--app-good); }
   color: var(--up-block-muted-foreground); font-size: var(--app-text-xs); font-weight: 500;
 }
 .mx-row {
-  display: flex; align-items: center; gap: var(--s2);
+  display: flex; align-items: flex-start; gap: var(--s2); min-width: 0;
   padding: var(--s2); border: 0; border-radius: var(--s2);
   background: transparent; font: inherit; font-size: var(--app-text-sm);
   text-align: left; cursor: pointer; color: var(--up-block-foreground);
 }
 .mx-row:hover { background: var(--up-block-surface-muted); }
 .mx-row.on { background: var(--up-block-sidebar-accent); color: var(--up-block-sidebar-accent-foreground); font-weight: 500; }
-.mx-row code { margin-left: auto; color: var(--up-block-muted-foreground); font-size: 11px; }
+.mx-row-t {
+  min-width: 0; flex: 1 1 auto; line-height: 1.3; overflow-wrap: anywhere;
+}
+.mx-row code {
+  flex: 0 1 120px; min-width: 0; max-width: 120px; margin-left: auto;
+  color: var(--up-block-muted-foreground); font-size: 11px; line-height: 1.2;
+  white-space: normal; overflow-wrap: anywhere; word-break: break-word; text-align: right;
+}
 .mx-row .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .mx-row .dot.ok { background: var(--app-good); }
 .mx-row .dot.na { background: var(--color--neutral--300); }
@@ -504,6 +554,44 @@ mark { background: var(--color--yellow--50); color: inherit; padding: 0 2px; bor
    * duoi nguong cham tren dien thoai. */
   display: inline-flex; align-items: center; min-height: 36px; padding: 0 var(--s1);
 }
+.doclinks { margin-left: auto; display: inline-flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+.doclinks .doclink { margin-left: 0; }
+
+/* Category assets: tach ro "asset la gi" khoi "tai sao API bi tu choi".
+ * Khong de ma loi lam vai tro cua trang thai; nguoi doc can thay quyen truoc,
+ * sau do moi xem code TikTok de doi chieu. */
+.asset-guide {
+  display: flex; justify-content: space-between; gap: var(--s5); align-items: flex-start;
+  padding: var(--s4); border: 1px solid var(--up-block-border);
+  border-radius: var(--up-block-card-radius); background: var(--up-block-surface);
+}
+.asset-guide-copy { display: grid; gap: var(--s2); max-width: 78ch; }
+.asset-guide-copy p { color: var(--up-block-foreground); }
+.asset-guide-counts { display: flex; gap: var(--s2); flex-wrap: wrap; justify-content: flex-end; }
+.asset-status { min-width: 190px; }
+.asset-status-detail {
+  display: block; margin-top: var(--s1); color: var(--up-block-muted-foreground);
+  font-size: var(--app-text-xs);
+}
+.asset-error-note {
+  display: grid; gap: var(--s2); padding: var(--s4);
+  border: 1px solid var(--app-warn); border-radius: var(--up-block-card-radius);
+  background: var(--app-warn-soft);
+}
+.asset-error-list {
+  display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none;
+}
+.asset-error-list li { display: flex; gap: var(--s2); align-items: baseline; flex-wrap: wrap; }
+.asset-error-list li span { color: var(--up-block-muted-foreground); font-size: var(--app-text-sm); }
+
+/* Creator Data: mot man hinh rieng cho du lieu lay bang token creator, tach khoi
+ * bang don partner de nguoi doc khong nham snapshot voi metric theo ky. */
+.creator-data-kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.creator-data-list-head { align-items: center; }
+.creator-data-search { margin-left: auto; }
+#t-creator-data th, #t-creator-data td { white-space: nowrap; }
+#t-creator-data td:first-child { min-width: 180px; }
+#t-creator-data .asset-status-detail code { font-size: 11px; }
 
 /* ===== He thong ============================================================ */
 .head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
@@ -544,6 +632,10 @@ mark { background: var(--color--yellow--50); color: inherit; padding: 0 2px; bor
   .meta { grid-template-columns: 1fr; gap: 2px; }
   .meta dt { font-size: var(--app-text-xs); }
   .mx-detail { padding: var(--s4); }
+  .asset-guide { flex-direction: column; gap: var(--s3); }
+  .asset-guide-counts { justify-content: flex-start; }
+  #c-alerts { grid-template-columns: 1fr; padding: var(--s3); }
+  .alert-filter-top { flex-direction: row; align-items: baseline; justify-content: space-between; }
   /* Ngon tay can vung cham lon hon con tro chuot. `.btn.sm` 34px la qua be. */
   .seg button, .chip-f, .btn.sm { min-height: 38px; }
 
@@ -553,7 +645,8 @@ mark { background: var(--color--yellow--50); color: inherit; padding: 0 2px; bor
   td.who, th.who { max-width: 116px; }
   .who-in { flex-wrap: nowrap; overflow: hidden; }
   .who-t { overflow: hidden; text-overflow: ellipsis; }
-  .flag { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
+  th[data-sort="alerts"], td.flags-cell { min-width: 180px; width: 180px; max-width: 180px; }
+  .flag { max-width: none; }
 }
 
 @media (max-width: 479px) {

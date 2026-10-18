@@ -63,7 +63,7 @@ const WD = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 const dayLabel = (s) => s ? `${WD[new Date(s + 'T00:00:00Z').getUTCDay()]} ${d2(s)}` : '—';
 const dt = (s) => s ? new Date(s).toLocaleString('vi-VN') : '—';
 
-let METRICS = [], DAILY = [], CREATORS = [], SYSTEM = null, DOCS = null;
+let METRICS = [], DAILY = [], CREATORS = [], SYSTEM = null, CREATOR_DATA = null, DOCS = null;
 // MOT bo chon ky duy nhat, ap cho KPI + bieu do + bang ngay + bang creator.
 // Truoc day KPI lay ngay moi nhat con bang cong toan bo lich su -> hai cho noi hai ky khac nhau.
 let PERIOD = 7;                       // so ngay, null = tat ca
@@ -87,17 +87,19 @@ function totals(days) {
   return t;
 }
 
-// Nhan ngan cho tieu de bang. Nhan day du trong registry
-// lam bang phinh ra phai cuon ngang; ten day du van con o tooltip va tab Metric.
+// Nhan tieng Anh chuan dung chung cho bang, bieu do va drill-down. Giữ cung mot
+// vocabulary voi registry de khong co mot metric bi goi bang nhieu ten khac nhau.
 const SHORT = {
   creators_seen: 'Creators with Order Data', creators_active: 'Active Creators',
-  gmv: 'Gross GMV', net_gmv: 'Net GMV (Est.)',
-  orders: 'Valid Orders', orders_all: 'Gross Orders', items_sold: 'Gross Units Sold',
-  items_sold_net: 'Net Units Sold (Est.)', refunded_items: 'Refunded/Cancelled Units', aov: 'Gross AOV',
+  total_creators: 'Total Creators',
+  gmv: 'Gross Attributed GMV', net_gmv: 'Net GMV (Estimated)',
+  orders: 'Valid Orders', orders_all: 'Total Orders (Gross)', items_sold: 'Gross Units Sold',
+  items_sold_net: 'Net Units Sold (Estimated)', refunded_items: 'Units on Refunded/Cancelled Lines',
+  aov: 'Average Order Value (Gross AOV)',
   est_commission: 'Estimated Commission (Gross)', est_commission_net: 'Estimated Commission After Refunds/Cancellations',
   commission_base: 'Commission Base (Gross)', commission_base_net: 'Commission Base After Refunds/Cancellations',
-  commission_rate: 'Estimated Commission Rate', refund_amount: 'Refund/Cancel Amount',
-  refund_orders: 'Fully Refunded/Cancelled Orders', refund_rate: 'Refund/Cancel Rate (Value)',
+  commission_rate: 'Estimated Commission Rate on Commission Base', refund_amount: 'Refund/Cancel Amount',
+  refund_orders: 'Fully Refunded/Cancelled Orders', refund_rate: 'Refund/Cancel Rate by Value',
 };
 const shortLabel = (k, m) => SHORT[k] ?? m?.label ?? k;
 const byKey = () => Object.fromEntries(METRICS.map(m => [m.key, m]));
@@ -169,8 +171,15 @@ const TIP_CATALOG = new Map();
 
 function columnTip(c, scope) {
   const specific = TABLE_TIPS[`${scope}:${c.key}`];
-  if (specific) return specific;
   const m = byKey()[c.key];
+  if (specific) {
+    return {
+      ...specific,
+      definitionVi: m?.definition,
+      formulaVi: m?.formula,
+      noteVi: m?.pitfalls,
+    };
+  }
   if (!m) return null;
   return {
     title: m.label,
@@ -178,6 +187,9 @@ function columnTip(c, scope) {
     formula: m.formula,
     unit: m.unit,
     note: m.pitfalls,
+    definitionVi: m.definition,
+    formulaVi: m.formula,
+    noteVi: m.pitfalls,
   };
 }
 
@@ -188,29 +200,37 @@ function tipIdFor(c, scope) {
   return tip ? id : '';
 }
 
+// KPI cards are not table headers, so they cannot use `data-tip-id` from the
+// table registry. Store the same structured fields on the info icon so the
+// tooltip is rendered by the same accessible overlay instead of relying on a
+// browser-native `title` tooltip that is easy to miss.
+function tipDataAttrs(tip) {
+  return `data-tip-title="${esc(tip?.title)}"
+    data-tip-definition="${esc(tip?.definition)}"
+    data-tip-definition-vi="${esc(tip?.definitionVi)}"
+    data-tip-formula="${esc(tip?.formula)}"
+    data-tip-formula-vi="${esc(tip?.formulaVi)}"
+    data-tip-unit="${esc(tip?.unit)}"
+    data-tip-note="${esc(tip?.note)}"
+    data-tip-note-vi="${esc(tip?.noteVi)}"
+    aria-label="Show definition and formula for ${esc(tip?.title)}"
+    `;
+}
+
 function metricHeader(c, scope, extraClass = '', sortState = null) {
   const id = tipIdFor(c, scope);
-  const tip = id ? TIP_CATALOG.get(id) : null;
-  const tipText = tip && [
-    tip.title,
-    `Definition: ${tip.definition}`,
-    `Formula: ${tip.formula}`,
-    `Unit: ${tip.unit}`,
-    `Note: ${tip.note}`,
-  ].filter(Boolean).join('\n\n');
   const sortable = sortState !== null;
   const on = sortable && sortState.key === c.key;
   const cls = `${extraClass}${c.num ? 'num ' : ''}${c.wide ? 'wide ' : ''}${c.key === 'username' ? 'who ' : ''}${sortable ? 'sortable' : ''}`;
   const sortAttrs = sortable
     ? ` data-sort="${esc(c.key)}" aria-sort="${on ? (sortState.dir === 1 ? 'ascending' : 'descending') : 'none'}"`
     : '';
-  return `<th class="${cls}"${sortAttrs}${id ? ` data-tip-id="${esc(id)}" title="${esc(tipText)}"` : ''}>${esc(c.label)}${id
+  return `<th class="${cls}"${sortAttrs}${id ? ` data-tip-id="${esc(id)}"` : ''}>${esc(c.label)}${id
       ? `<span class="metric-help" tabindex="0" role="img" aria-label="Show definition and formula for ${esc(c.label)}">ⓘ</span>` : ''}${sortable
         ? `<span class="arrow">${on ? (sortState.dir === 1 ? '▲' : '▼') : ''}</span>` : ''}</th>`;
 }
 
-function showMetricTooltip(target, id) {
-  const tip = TIP_CATALOG.get(id);
+function showTooltip(target, tip) {
   if (!tip) return;
   let el = $('#metric-tooltip');
   if (!el) {
@@ -219,10 +239,16 @@ function showMetricTooltip(target, id) {
     el.setAttribute('role', 'tooltip');
     document.body.append(el);
   }
+  const definitionVi = tip.definitionVi && tip.definitionVi !== tip.definition
+    ? `<div class="metric-tip-vi"><b>Vietsub</b>${esc(tip.definitionVi)}</div>` : '';
+  const formulaVi = tip.formulaVi && tip.formulaVi !== tip.formula
+    ? `<div class="metric-tip-vi"><b>Vietsub</b><code>${esc(tip.formulaVi)}</code></div>` : '';
+  const noteVi = tip.noteVi && tip.noteVi !== tip.note
+    ? `<div class="metric-tip-vi"><b>Vietsub</b>${esc(tip.noteVi)}</div>` : '';
   el.innerHTML = `<strong class="metric-tip-title">${esc(tip.title)}</strong>
-    <div class="metric-tip-item"><b>Definition</b>${esc(tip.definition)}</div>
-    <div class="metric-tip-item"><b>Formula</b><code>${esc(tip.formula)}</code></div>
-    <div class="metric-tip-meta"><b>Unit:</b> ${esc(tip.unit)}${tip.note ? ` · <b>Note:</b> ${esc(tip.note)}` : ''}</div>`;
+    <div class="metric-tip-item"><b>Definition / Định nghĩa</b>${esc(tip.definition)}${definitionVi}</div>
+    <div class="metric-tip-item"><b>Formula / Công thức</b><code>${esc(tip.formula)}</code>${formulaVi}</div>
+    <div class="metric-tip-meta"><b>Unit / Đơn vị:</b> ${esc(tip.unit)}${tip.note ? `<div class="metric-tip-note"><b>Note / Lưu ý:</b> ${esc(tip.note)}</div>` : ''}${noteVi}</div>`;
   el.hidden = false;
   const r = target.getBoundingClientRect();
   const gap = 8;
@@ -235,27 +261,49 @@ function showMetricTooltip(target, id) {
   el.style.top = `${top}px`;
 }
 
+function showMetricTooltip(target, id) {
+  showTooltip(target, TIP_CATALOG.get(id));
+}
+
+function showInfoTooltip(target) {
+  const d = target?.dataset ?? {};
+  showTooltip(target, {
+    title: d.tipTitle,
+    definition: d.tipDefinition,
+    definitionVi: d.tipDefinitionVi,
+    formula: d.tipFormula,
+    formulaVi: d.tipFormulaVi,
+    unit: d.tipUnit,
+    note: d.tipNote,
+    noteVi: d.tipNoteVi,
+  });
+}
+
 function hideMetricTooltip() {
   const el = $('#metric-tooltip');
   if (el) el.hidden = true;
 }
 
 document.addEventListener('pointerover', (e) => {
-  const th = e.target.closest?.('th[data-tip-id]');
-  if (!th || th.contains(e.relatedTarget)) return;
-  showMetricTooltip(th, th.dataset.tipId);
+  const target = e.target.closest?.('th[data-tip-id], .info[data-tip-title]');
+  if (!target || target.contains(e.relatedTarget)) return;
+  target.matches('th[data-tip-id]')
+    ? showMetricTooltip(target, target.dataset.tipId)
+    : showInfoTooltip(target);
 });
 document.addEventListener('pointerout', (e) => {
-  const th = e.target.closest?.('th[data-tip-id]');
-  if (!th || th.contains(e.relatedTarget)) return;
+  const target = e.target.closest?.('th[data-tip-id], .info[data-tip-title]');
+  if (!target || target.contains(e.relatedTarget)) return;
   hideMetricTooltip();
 });
 document.addEventListener('focusin', (e) => {
   const help = e.target.closest?.('.metric-help');
   if (help) showMetricTooltip(help.closest('th'), help.closest('th')?.dataset.tipId);
+  const info = e.target.closest?.('.info[data-tip-title]');
+  if (info) showInfoTooltip(info);
 });
 document.addEventListener('focusout', (e) => {
-  if (e.target.closest?.('.metric-help')) hideMetricTooltip();
+  if (e.target.closest?.('.metric-help, .info[data-tip-title]')) hideMetricTooltip();
 });
 addEventListener('resize', hideMetricTooltip);
 addEventListener('scroll', hideMetricTooltip, true);
@@ -278,6 +326,7 @@ function showLoading() {
   $('#t-daily').innerHTML = skelRows(5);
   $('#t-creators').innerHTML = skelRows(8);
   $('#t-products').innerHTML = skelRows(8);
+  $('#t-creator-data').innerHTML = skelRows(5);
 }
 
 // --- tabs ---
@@ -297,11 +346,25 @@ $('#nav').addEventListener('click', (e) => {
 // Cac the cao bang nhau, cung co chu, cung sac do = khong the biet nhin cai nao truoc.
 // Chia hai muc: 4 con so tra loi "ky nay the nao", con lai la chi tiet de doi chieu.
 // Thu tu trong moi muc la thu tu doc, khong phai thu tu trong registry.
-const KPI_CHINH = ['net_gmv', 'orders_all', 'est_commission', 'creators_active'];
+const KPI_CHINH = ['net_gmv', 'orders_all', 'est_commission', 'creators_active', 'total_creators'];
 const KPI_PHU   = ['gmv', 'refund_amount', 'refund_orders', 'refund_rate',
                    'aov', 'items_sold', 'items_sold_net', 'refunded_items',
                    'commission_base', 'commission_rate', 'creators_seen'];
 const KPI_ORDER = [...KPI_CHINH, ...KPI_PHU];
+
+// This is a dashboard context metric, not a TikTok API metric. The partner API
+// does not expose the full MCN binding list, so the honest scope is creator
+// usernames that exist in our local `creators` table (seen at least once).
+const DERIVED_KPIS = {
+  total_creators: {
+    label: 'Total Creators', unit: 'creators', available: true, live: false,
+    definition: 'Distinct creator usernames present in the local creator dataset.',
+    definitionVi: 'Số creator khác nhau đã từng xuất hiện trong dữ liệu cục bộ của dashboard.',
+    formula: 'COUNT(DISTINCT creator_username) FROM creators',
+    pitfalls: 'This is not the total number of creators currently bound to the MCN; TikTok does not expose that full binding list through this partner API.',
+    pitfallsVi: 'Không phải tổng creator đang bind với MCN; TikTok không cung cấp toàn bộ danh sách bind qua partner API này.',
+  },
+};
 
 // Metric tu uy quyen CREATOR. CO Y khong cho vao KPI_ORDER/SUM_KEYS: API creator khong tra
 // ve thoi diem tao nen moi lan sync la mot ANH CHUP trang thai hien tai. Cong 7 ngay lai
@@ -361,21 +424,31 @@ function renderKpis() {
   // dang cau ("Ty le hoan/huy (theo gia tri)") nen xuong 2 dong va day moi the len 163px,
   // trong khi bang ngay duoi goi chinh no la "% hoan" -- mot thu, hai ten.
   const the = (k, chinh) => {
-    const v = k === 'creators_seen' ? seen : k === 'creators_active' ? active : (t[k] ?? 0);
-    const unit = m[k].unit;
+    const metric = m[k] ?? DERIVED_KPIS[k];
+    const isDerived = Boolean(DERIVED_KPIS[k]);
+    const v = k === 'total_creators' ? CREATORS.length
+      : k === 'creators_seen' ? seen : k === 'creators_active' ? active : (t[k] ?? 0);
+    const unit = metric.unit;
     const laCreator = k.startsWith('creators_');
     // Don vi KHONG lap lai khi con so da mang no: "9.3%" roi "%" nua thanh "1.1% %".
     const donVi = unit === '%' ? '' : `<span class="muted">${esc(unit)}</span>`;
+    const tip = {
+      title: shortLabel(k, metric), definition: metric.definition, formula: metric.formula,
+      unit: metric.unit, note: metric.pitfalls,
+      definitionVi: metric.definitionVi ?? metric.definition,
+      formulaVi: metric.formulaVi ?? metric.formula,
+      noteVi: metric.pitfallsVi ?? metric.pitfalls,
+    };
     return `<div class="card kpi${chinh ? ' chinh' : ''}">
-      <div class="kpi-l">${esc(shortLabel(k, m[k]))}
-        <span class="info" tabindex="0" title="${esc(m[k].label)}&#10;&#10;${esc(m[k].definition)}&#10;&#10;Công thức: ${esc(m[k].formula)}">ⓘ</span>
+      <div class="kpi-l">${esc(shortLabel(k, metric))}
+        <span class="info" tabindex="0" role="img" ${tipDataAttrs(tip)}>ⓘ</span>
       </div>
       <div class="n" title="${fmt(v, unit)}">${fmtKpi(v, unit)}</div>
-      <div class="kpi-f">${laCreator ? '' : delta(k, v, unit)}${donVi}</div>
-      ${chinh && !laCreator ? spark(k, days) : ''}
+      <div class="kpi-f">${isDerived || laCreator ? '' : delta(k, v, unit)}${donVi}</div>
+      ${chinh && !laCreator && !isDerived ? spark(k, days) : ''}
     </div>`;
   };
-  const co = (k) => m[k]?.available && !m[k].live;
+  const co = (k) => (m[k] ?? DERIVED_KPIS[k])?.available && !(m[k] ?? DERIVED_KPIS[k]).live;
   $('#kpis').innerHTML = KPI_CHINH.filter(co).map(k => the(k, true)).join('');
   $('#kpis-phu').innerHTML = KPI_PHU.filter(co).map(k => the(k, false)).join('');
 
@@ -387,7 +460,11 @@ function renderKpis() {
     $('#snap-day').textContent = dayLabel(snap.day);
     $('#kpis-snap').innerHTML = keys.map(k => `<div class="card kpi">
       <div class="kpi-l">${esc(m[k].label)}
-        <span class="info" tabindex="0" title="${esc(m[k].definition)}&#10;&#10;Lưu ý: ${esc(m[k].pitfalls)}">ⓘ</span>
+        <span class="info" tabindex="0" role="img" ${tipDataAttrs({
+          title: m[k].label, definition: m[k].definition, formula: m[k].formula,
+          unit: m[k].unit, note: m[k].pitfalls,
+          definitionVi: m[k].definition, formulaVi: m[k].formula, noteVi: m[k].pitfalls,
+        })}>ⓘ</span>
       </div>
       <div class="n" title="${fmt(snap[k], m[k].unit)}">${fmtKpi(snap[k], m[k].unit)}</div>
       <div class="kpi-f"><span class="muted">${esc(m[k].unit)}</span></div>
@@ -467,22 +544,22 @@ const CCOLS = [
   // vung giua bang so le va mat khong bam duoc vao dau de quet.
   { key: 'alerts',          label: 'Alerts',       num: false },
   { key: 'days',            label: 'Days',         num: true },
-  { key: 'gmv',             label: 'Gross GMV',    num: true , delta: true },
+  { key: 'gmv',             label: 'Gross Attributed GMV', num: true , delta: true },
   { key: 'net_gmv',         label: 'Net GMV (Estimated)', num: true , delta: true },
   { key: 'refund_amount',   label: 'Refund/Cancel Amount', num: true },
   { key: 'refund_orders',   label: 'Fully Refunded/Cancelled Orders', num: true },
   { key: 'refund_rate',     label: 'Refund/Cancel Rate by Value', num: true, unit: '%' },
   { key: 'orders',          label: 'Valid Orders',  num: true , delta: true },
-  { key: 'orders_all',      label: 'Gross Orders',  num: true, delta: true },
+  { key: 'orders_all',      label: 'Total Orders (Gross)', num: true, delta: true },
   { key: 'items_sold',      label: 'Gross Units Sold', num: true },
   { key: 'items_sold_net',  label: 'Net Units Sold (Estimated)', num: true },
-  { key: 'refunded_items',  label: 'Refunded/Cancelled Units', num: true },
-  { key: 'aov',             label: 'Gross AOV',     num: true },
+  { key: 'refunded_items',  label: 'Units on Refunded/Cancelled Lines', num: true },
+  { key: 'aov',             label: 'Average Order Value (Gross AOV)', num: true },
   { key: 'commission_base', label: 'Commission Base (Gross)', num: true },
   { key: 'commission_base_net', label: 'Commission Base After Refunds/Cancellations', num: true },
   { key: 'est_commission',  label: 'Estimated Commission (Gross)', num: true , delta: true },
   { key: 'est_commission_net', label: 'Estimated Commission After Refunds/Cancellations', num: true },
-  { key: 'commission_rate', label: 'Estimated Commission Rate', num: true, unit: '%' },
+  { key: 'commission_rate', label: 'Estimated Commission Rate on Commission Base', num: true, unit: '%' },
   { key: 'first_seen',      label: 'First Seen',    num: false },
   { key: 'last_seen',       label: 'Last Seen',     num: false },
 ];
@@ -518,10 +595,22 @@ function creatorRows() {
 // Chip loc nhanh dau bang. Cau hoi dau tien khi mo bang nay la "ai dang tut?" --
 // tra loi bang mot con so bam duoc, thay vi bat nguoi ta tu so 111 dong voi ky truoc.
 const ALERT_CHIPS = [
-  { code: 'stopped', level: 'bad',  label: 'Ngừng bán' },
-  { code: 'drop',    level: 'bad',  label: 'Tụt dốc' },
-  { code: 'refund',  level: 'warn', label: 'Hoàn cao' },
-  { code: 'rise',    level: 'good', label: 'Tăng mạnh' },
+  {
+    code: 'stopped', level: 'bad', label: 'No Orders', compact: () => 'No orders',
+    tip: () => 'No Orders — creator GMV is 0 in the selected period. Formula: current GMV = 0; previous-period GMV must be at least VND 1,000,000.',
+  },
+  {
+    code: 'drop', level: 'bad', label: 'GMV Decline', compact: pct => `GMV down ${pct ?? ''}`.trim(),
+    tip: () => `GMV Decline — gross attributed GMV fell by at least ${RULES.dropPct}% versus the previous period. Formula: (current GMV − previous GMV) / previous GMV ≤ −${RULES.dropPct}%; previous GMV must be at least VND ${vnd.format(RULES.minGmv)}.`,
+  },
+  {
+    code: 'refund', level: 'warn', label: 'High Refund Rate', compact: pct => `Refund rate ${pct ?? ''}`.trim(),
+    tip: () => `High Refund Rate — refund/cancel value is at least ${RULES.refundPct}% of gross attributed GMV. Formula: refund/cancel amount ÷ gross attributed GMV × 100% ≥ ${RULES.refundPct}%; at least ${RULES.minOrders} orders are required.`,
+  },
+  {
+    code: 'rise', level: 'good', label: 'GMV Growth', compact: pct => `GMV up ${pct ?? ''}`.trim(),
+    tip: () => `GMV Growth — gross attributed GMV grew by at least ${RULES.risePct}% versus the previous period. Formula: (current GMV − previous GMV) / previous GMV ≥ ${RULES.risePct}%; previous GMV must be at least VND ${vnd.format(RULES.minGmv)}.`,
+  },
 ];
 
 function renderAlertBar() {
@@ -531,20 +620,28 @@ function renderAlertBar() {
   const any = Object.values(ALERT_COUNTS).some(n => n > 0);
   el.classList.toggle('hide', !any);
   if (!any) { ALERT_FILTER = ''; return; }
+  const active = ALERT_FILTER
+    ? `Đang lọc: ${ALERT_CHIPS.find(c => c.code === ALERT_FILTER)?.label ?? 'Cảnh báo'}`
+    : 'Lọc nhanh creator';
+  const rule = PERIOD
+    ? `So với ${PERIOD} ngày liền trước · tụt ≥${RULES.dropPct}% · hoàn ≥${RULES.refundPct}% · chỉ tính creator kỳ trước trên ${compact.format(RULES.minGmv)}đ`
+    : `Kỳ “tất cả” không có kỳ trước để so · chỉ hiện hoàn ≥${RULES.refundPct}% · chọn 7 hoặc 30 ngày để thấy tụt dốc / tăng mạnh`;
   el.innerHTML = `
-    <button class="chip-f${ALERT_FILTER ? '' : ' on'}" data-code="">Tất cả
-      <span>${CREATORS.length}</span></button>
-    ${ALERT_CHIPS.filter(c => ALERT_COUNTS[c.code]).map(c => `
-      <button class="chip-f ${c.level}${ALERT_FILTER === c.code ? ' on' : ''}" data-code="${c.code}"
-        aria-pressed="${ALERT_FILTER === c.code}">${esc(c.label)}
-        <span>${ALERT_COUNTS[c.code]}</span></button>`).join('')}
-    <span class="sub alert-why">${PERIOD
-      ? `So với ${PERIOD} ngày liền trước · tụt ≥${RULES.dropPct}%, hoàn ≥${RULES.refundPct}%,
-         chỉ tính creator kỳ trước trên ${compact.format(RULES.minGmv)}đ`
-      // Chon "tat ca" thi khong co ky truoc -> chi con luat khong can so sanh. Noi ro,
-      // thay vi de nguoi doc tuong co tut doc ma khong ai bi gan co.
-      : `Kỳ “tất cả” không có kỳ trước để so — chỉ hiện cảnh báo hoàn ≥${RULES.refundPct}%.
-         Chọn 7 hoặc 30 ngày để thấy tụt dốc / tăng mạnh.`}</span>`;
+    <div class="alert-filter-top">
+      <div class="alert-filter-title">Cảnh báo <span>${esc(active)}</span></div>
+      <span class="alert-filter-period">${PERIOD ? `${PERIOD} ngày` : 'Tất cả thời gian'}</span>
+    </div>
+    <div class="alert-filter-options">
+      <button class="chip-f${ALERT_FILTER ? '' : ' on'}" data-code="" aria-pressed="${!ALERT_FILTER}">
+        <span class="chip-label">All</span><span class="chip-count">${CREATORS.length}</span>
+      </button>
+      ${ALERT_CHIPS.filter(c => ALERT_COUNTS[c.code]).map(c => `
+        <button class="chip-f ${c.level}${ALERT_FILTER === c.code ? ' on' : ''}" data-code="${c.code}"
+          aria-pressed="${ALERT_FILTER === c.code}" title="${esc(c.tip())}">
+          <span class="chip-label">${esc(c.label)}</span><span class="chip-count">${ALERT_COUNTS[c.code]}</span>
+        </button>`).join('')}
+    </div>
+    <p class="sub alert-why"><span class="alert-why-label">Quy tắc</span>${esc(rule)}</p>`;
 }
 
 // So sanh voi ky truoc, ngay duoi con so. null = khong so duoc (chon "tat ca", hoac ky
@@ -578,10 +675,18 @@ function renderCreators() {
       : `<span class="av ph" aria-hidden="true">${esc((r.username[0] ?? '?').toUpperCase())}</span>`}
     <span class="who-t">@${esc(r.username)}</span></div></td>`;
 
-  const alertCell = (r) => `<td class="flags-cell"><div class="flags-in">${
+  const alertText = (a) => {
+    const pct = a.text.match(/\d+(?:\.\d+)?%/)?.[0];
+    const meta = ALERT_CHIPS.find(c => c.code === a.code);
+    if (meta) return meta.compact(pct);
+    return a.text;
+  };
+  const alertTitle = (a) => ALERT_CHIPS.find(c => c.code === a.code)?.tip() ?? a.text;
+  const alertCell = (r) => `<td class="flags-cell"><div class="flags-in" role="list" aria-label="Cảnh báo">${
     r.alerts.length
-      ? r.alerts.map(a => `<span class="flag ${a.level}">${esc(a.text)}</span>`).join('')
-      : '<span class="muted">—</span>'}</div></td>`;
+      ? r.alerts.map(a => `<span class="flag ${a.level}" data-code="${esc(a.code)}" role="listitem"
+          aria-label="${esc(alertText(a))}" title="${esc(alertTitle(a))}">${esc(alertText(a))}</span>`).join('')
+      : '<span class="muted flags-empty">—</span>'}</div></td>`;
 
   const cell = (r, c) => c.key === 'username' ? nameCell(r)
     : c.key === 'alerts' ? alertCell(r)
@@ -828,24 +933,46 @@ function renderSystem() {
       </dl></div>`;
   }).join('');
 
-  // 20/21 dong noi CUNG MOT cau ("16032001 / 16032015"). Liet ke het ra chi de nguoi doc
-  // cuon qua 20 dong giong nhau; cai duy nhat dang dung thi lan mat giua chung.
+  // Category assets la danh sach quyen theo category ma TikTok cap cho app. Chi cipher
+  // cua Creator Management dang duoc dung cho cap_order/search; cac cipher con lai
+  // van duoc tra ve nhung khong co quyen goi API tu tai khoan hien tai.
   const dung = categoryAssets.filter(a => a.cipher === activeCipher);
   const khongDung = categoryAssets.filter(a => a.cipher !== activeCipher);
   const bangAsset = (list) => `<table>
-    <thead><tr><th>Category asset</th><th>Thị trường</th><th>Cipher</th><th>Dùng được</th></tr></thead>
+    <thead><tr><th>Category</th><th>Market</th><th>Cipher</th><th>API access</th></tr></thead>
     <tbody>${list.map(a => {
       const on = a.cipher === activeCipher;
       return `<tr><td>${esc(a.category_name)}</td><td>${esc(a.target_market)}</td>
         <td><code>${esc(a.cipher.slice(0, 22))}…</code></td>
-        <td>${on ? '<span class="tag ok">đang dùng</span>'
-                 : '<span class="tag off">16032001 / 16032015</span>'}</td></tr>`;
+        <td class="asset-status">${on
+          ? '<span class="tag ok">Có quyền · đang dùng</span>'
+          : '<span class="tag off">Chưa được cấp quyền</span><small class="asset-status-detail">Mã: 16032001 hoặc 16032015</small>'}</td></tr>`;
     }).join('')}</tbody></table>`;
-  const assets = `<div class="card table-card">${bangAsset(dung)}</div>
+  const assetGuide = `<div class="asset-guide" role="note">
+      <div class="asset-guide-copy">
+        <b>Category asset là gì?</b>
+        <p>Đây là nhóm quyền truy cập theo category kinh doanh mà TikTok cấp cho app. <b>Cipher</b> là mã định danh dùng khi gọi API; không cần giải mã.</p>
+        <p class="sub">Hiện chỉ <b>Creator Management</b> có quyền dùng cho <code>cap_order/search</code> để lấy dữ liệu đơn.</p>
+      </div>
+      <div class="asset-guide-counts" aria-label="Tóm tắt quyền truy cập">
+        <span class="tag ok">${dung.length} có quyền</span>
+        <span class="tag off">${khongDung.length} chưa có quyền</span>
+      </div>
+    </div>`;
+  const assets = `${assetGuide}
+    <div class="card table-card">${dung.length ? bangAsset(dung)
+      : '<p class="empty">Chưa có category asset nào được cấp quyền dùng cho API.</p>'}</div>
     ${khongDung.length ? `<details class="xep">
-      <summary><h2>Không gọi được API</h2><span class="dem">${khongDung.length} asset</span></summary>
-      <p class="sub">Tất cả đều trả <code>16032001</code> (invalid main_account) hoặc
-         <code>16032015</code> (permission denied) — cùng một lý do.</p>
+      <summary><h2>Chưa được cấp quyền gọi API</h2><span class="dem">${khongDung.length} asset</span></summary>
+      <div class="asset-error-note">
+        <b>Vì sao không dùng được?</b>
+        <p>Khi thử gọi API, các asset này trả một trong hai mã phản hồi sau:</p>
+        <ul class="asset-error-list">
+          <li><code>16032001</code><span>invalid main_account — tài khoản chính không hợp lệ</span></li>
+          <li><code>16032015</code><span>permission denied — app chưa được cấp quyền</span></li>
+        </ul>
+        <p class="sub">Muốn dùng các category này, cần yêu cầu partner cấp đúng quyền/category trong TikTok Shop.</p>
+      </div>
       <div class="card table-card">${bangAsset(khongDung)}</div>
     </details>` : ''}`;
 
@@ -885,12 +1012,11 @@ function renderSystem() {
     </div>
     <div class="sec-head"><h2>Chi tiết uỷ quyền</h2></div>
     <div class="two-col">${auth}</div>
-    <div class="sec-head"><h2>Category asset (${categoryAssets.length})</h2>
+    <div class="sec-head"><h2>Quyền API theo category (${categoryAssets.length})</h2>
       ${DOCS?.api?.category_assets?.docUrl ? `<a class="doclink" target="_blank" rel="noopener"
         href="${esc(DOCS.api.category_assets.docUrl)}"
         title="${esc(DOCS.api.category_assets.method)} ${esc(DOCS.api.category_assets.path)}"
         >${esc(DOCS.api.category_assets.title)} ↗</a>` : ''}</div>
-    <p class="sub">Chỉ cipher của <b>Creator Management</b> gọi được <code>cap_order/search</code>; 20 cái còn lại trả lỗi.</p>
     ${assets}
     <div class="sec-head"><h2>Lịch sử kéo dữ liệu</h2></div>
     ${runs}`;
@@ -1026,6 +1152,89 @@ async function loadSystem() {
   $('#side-foot').innerHTML = `<span class="tag ${SYSTEM.authorizations.some(a => a.status === 'active') ? 'ok' : 'warn'}">
     ${SYSTEM.authorizations.filter(a => a.status === 'active').length} uỷ quyền đang hoạt động</span>`;
 }
+
+function renderCreatorData() {
+  const data = CREATOR_DATA ?? { rows: [], totals: {} };
+  const totals = data.totals ?? {};
+  const run = data.lastSync;
+  const runNote = run?.note?.startsWith('creator sync: chua co creator nao uy quyen')
+    ? 'Chưa có creator active để sync.'
+    : run?.note ? 'Có chi tiết trong Hệ thống.' : '';
+  const status = run
+    ? `<div class="banner${run.status === 'error' ? ' err' : ''}">
+        <span class="dot-${run.status === 'ok' ? 'ok' : 'err'}"></span>
+        Lần sync creator gần nhất: <b>${dt(run.finished_at ?? run.started_at)}</b> ·
+        ${esc(run.status)} · ${fmt(run.rows_written)} dòng
+        ${runNote ? `<span class="muted" title="${esc(run.note)}">${esc(runNote)}</span>` : ''}
+      </div>`
+    : `<div class="banner"><span class="dot-err"></span>Chưa có lần sync creator nào.</div>`;
+  $('#creator-data-status').innerHTML = status;
+
+  const cards = [
+    ['authorized_creators', 'Authorized Creators', 'creator',
+      'Creator đã uỷ quyền và token hiện còn active.',
+      "COUNT(*) FROM authorizations WHERE role='creator' AND status='active'"],
+    ['synced_creators', 'Synced Creators', 'creator',
+      'Creator đã có ít nhất một ảnh chụp dữ liệu từ Creator API.',
+      'COUNT(DISTINCT creator_username) có snapshot mới nhất'],
+    ['sample_requests', 'Sample Requests', 'requests',
+      'Tổng yêu cầu hàng mẫu trong ảnh chụp mới nhất của các creator.',
+      'SUM(sample_requests) theo creator'],
+    ['samples_completed', 'Completed Samples', 'requests',
+      'Tổng yêu cầu hàng mẫu đã hoàn thành trong ảnh chụp mới nhất.',
+      'SUM(samples_completed) theo creator'],
+    ['showcase_products', 'Showcase Products', 'products',
+      'Tổng sản phẩm đang có trong showcase ở ảnh chụp mới nhất.',
+      'SUM(showcase_products) theo creator'],
+    ['target_collaborations', 'Target Collaborations', 'campaigns',
+      'Tổng chiến dịch hợp tác creator đang thấy qua API.',
+      'SUM(target_collaborations) theo creator'],
+  ];
+  $('#creator-data-kpis').innerHTML = cards.map(([key, label, unit, definition, formula]) => `
+    <div class="card kpi">
+      <div class="kpi-l">${esc(label)}
+        <span class="info" tabindex="0" role="img" ${tipDataAttrs({
+          title: label, definition, formula, unit, note: 'Đây là ảnh chụp trạng thái hiện tại, không phải số liệu theo kỳ.',
+          definitionVi: definition, formulaVi: formula,
+          noteVi: 'Đây là ảnh chụp trạng thái hiện tại, không phải số liệu theo kỳ.',
+        })}>ⓘ</span>
+      </div>
+      <div class="n">${fmt(totals[key] ?? 0)}</div>
+      <div class="kpi-f"><span class="muted">${esc(unit)}</span></div>
+    </div>`).join('');
+
+  const query = ($('#creator-data-q')?.value ?? '').trim().toLowerCase();
+  const rows = (data.rows ?? []).filter(r =>
+    !query || String(r.username ?? r.open_id).toLowerCase().includes(query));
+  $('#creator-data-count').textContent = `${rows.length}/${(data.rows ?? []).length} creator`;
+  const snap = (r, key) => r.snapshot_day ? fmt(r[key]) : '—';
+  const name = (r) => r.username
+    ? `<b>@${esc(r.username)}</b>`
+    : `<span class="muted">Chưa lấy profile</span><small class="asset-status-detail"><code>${esc(r.open_id)}</code></small>`;
+  const state = (r) => r.status === 'active'
+    ? `<span class="tag ok">Active</span>`
+    : `<span class="tag off">${esc(r.status ?? 'Unknown')}</span>`;
+  $('#t-creator-data').innerHTML = `
+    <thead><tr><th>Creator</th><th>Authorization</th><th>Snapshot date</th>
+      <th class="num">Sample Requests</th><th class="num">Completed Samples</th>
+      <th class="num">Showcase Products</th><th class="num">Target Collaborations</th></tr></thead>
+    <tbody>${rows.length ? rows.map(r => `<tr>
+      <td>${name(r)}</td>
+      <td>${state(r)}<small class="asset-status-detail">${r.authorized_at ? `từ ${dt(r.authorized_at)}` : ''}</small></td>
+      <td>${r.snapshot_day ? dayLabel(r.snapshot_day) : '<span class="muted">Chưa sync</span>'}</td>
+      <td class="num">${snap(r, 'sample_requests')}</td>
+      <td class="num">${snap(r, 'samples_completed')}</td>
+      <td class="num">${snap(r, 'showcase_products')}</td>
+      <td class="num">${snap(r, 'target_collaborations')}</td>
+    </tr>`).join('') : `<tr><td colspan="7" class="empty">${query
+      ? 'Không tìm thấy creator phù hợp.'
+      : 'Chưa có creator nào uỷ quyền hoặc chưa tải được dữ liệu.'}</td></tr>`}</tbody>`;
+}
+
+async function loadCreatorData() {
+  CREATOR_DATA = await get('/api/creator-data');
+  renderCreatorData();
+}
 // --- Wiki: tim kiem + 2 kieu hien thi -------------------------------------
 // Tim tren toan bo noi dung cua metric, khong chi tren nhan.
 const wikiHaystack = (m) => {
@@ -1061,12 +1270,35 @@ function metricRow(m, kw, on) {
   </button>`;
 }
 
-// Link toi dung trang tai lieu TikTok ma mo ta ben duoi duoc trich ra, de doi chieu lai duoc.
-function apiDocLink(m) {
-  const api = DOCS?.api?.cap_order_search;
-  if (!api?.docUrl || !(m.fields ?? []).length) return '';
-  return `<a class="doclink" href="${esc(api.docUrl)}" target="_blank" rel="noopener"
-    title="${esc(api.method)} ${esc(api.path)}">${esc(api.title)} ↗</a>`;
+// Tim dung trang tai lieu TikTok theo endpoint that su dung. Truoc day chi can
+// `m.fields.length` la UI luon gan Search CAP Affiliate Orders, lam cac metric
+// creator (sample/showcase/collaboration) bi tro sai trang. Metric ghep co the
+// hien nhieu link: moi link la mot API ma source cua metric thuc su nhac toi.
+function apiDocsForMetric(m) {
+  const source = String(m.source ?? '');
+  const found = [];
+  const add = (api) => {
+    if (api?.docUrl && !found.some(x => x.docUrl === api.docUrl)) found.push(api);
+  };
+  for (const api of Object.values(DOCS?.api ?? {})) {
+    if (api.path && source.includes(api.path)) add(api);
+  }
+  for (const api of Object.values(DOCS?.creatorApi ?? {})) {
+    if (api.path && source.includes(api.path)) add(api);
+  }
+
+  // Mot so metric la metric dan xuat nhung van khai fields de cho nguoi doc
+  // biet no duoc tinh tu API nao; source cua chung chi ghi "Dan xuat".
+  if (!found.length && (m.fields ?? []).length) {
+    add(DOCS?.api?.cap_order_search);
+  }
+  return found;
+}
+
+function apiDocLinks(m) {
+  const links = apiDocsForMetric(m).map(api => `<a class="doclink" href="${esc(api.docUrl)}" target="_blank" rel="noopener"
+    title="${esc(api.method)} ${esc(api.path)}">${esc(api.title)} ↗</a>`).join('');
+  return links ? `<span class="doclinks" aria-label="API documentation">${links}</span>` : '';
 }
 
 function fieldRows(m, kw) {
@@ -1102,7 +1334,7 @@ function metricDetail(m, kw) {
     <h3>Công thức <span class="by ours">dashboard tự tính</span></h3>
     <p><code class="formula">${hl(m.formula, kw)}</code></p>
 
-    <h3>Trường API <span class="by tiktok">nguyên văn TikTok + bản dịch</span>${apiDocLink(m)}</h3>
+    <h3>Trường API <span class="by tiktok">nguyên văn TikTok + bản dịch</span>${apiDocLinks(m)}</h3>
     ${fieldRows(m, kw)}
 
     <h3>Cần lưu ý</h3>
@@ -1217,20 +1449,23 @@ async function showAuthLink(role) {
 $('#btn-link').addEventListener('click', () => showAuthLink('partner'));
 $('#btn-link-creator').addEventListener('click', () => showAuthLink('creator'));
 
-$('#btn-sync-creator').addEventListener('click', async (e) => {
-  e.target.disabled = true; e.target.textContent = 'Đang kéo…';
+async function syncCreatorData(button) {
+  button.disabled = true; button.textContent = 'Đang sync…';
   try {
     const r = await fetch('/api/sync-creator', { method: 'POST' }).then(x => x.json());
     alert(r.error ? `Lỗi: ${r.error}`
       : `Xong: ${r.creators} creator, ${r.written} dòng${
           [...(r.errors ?? []), ...(r.warnings ?? [])].length
             ? `\n${[...r.errors, ...r.warnings].join('\n')}` : ''}`);
-    await Promise.all([loadSummary(), loadCreators(), loadSystem()]);
-  } finally { e.target.disabled = false; e.target.textContent = 'Kéo dữ liệu creator'; }
-});
+    await Promise.all([loadSummary(), loadCreators(), loadSystem(), loadCreatorData()]);
+  } finally { button.disabled = false; button.textContent = 'Sync Creator Data'; }
+}
+$('#btn-sync-creator').addEventListener('click', (e) => syncCreatorData(e.currentTarget));
+$('#btn-sync-creator-data').addEventListener('click', (e) => syncCreatorData(e.currentTarget));
 
 $('#btn-export').addEventListener('click', exportCsv);
 $('#c-metric').addEventListener('change', renderChart);
+$('#creator-data-q').addEventListener('input', renderCreatorData);
 
 $('#period').addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1319,6 +1554,7 @@ $('#w-view').addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== '/' || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
   const box = !$('#tab-chi-so').classList.contains('hide') ? $('#w-q')
+            : !$('#tab-creator-data').classList.contains('hide') ? $('#creator-data-q')
             : !$('#tab-creator').classList.contains('hide') ? $('#c-q')
             : !$('#tab-san-pham').classList.contains('hide') ? $('#p-q') : null;
   if (!box) return;
@@ -1338,12 +1574,12 @@ document.addEventListener('keydown', (e) => {
     .map(m => `<option value="${esc(m.key)}"${m.key === 'gmv' ? ' selected' : ''}>${esc(m.label)}</option>`).join(''));
   renderWiki();
   showLoading();
-  await Promise.all([loadCreators(), loadSystem(), loadProducts(), loadCoverage()]);
+  await Promise.all([loadCreators(), loadSystem(), loadCreatorData(), loadProducts(), loadCoverage()]);
   await loadSummary();   // can CREATORS truoc de KPI dem dung so creator trong ky
   } catch (e) {
     // Khung xuong aria-busy nam lai vinh vien neu khong co duong nay: nguoi dung cho mai
     // mot thu khong bao gio toi. Noi thang la hong.
-    for (const id of ['#kpis', '#kpis-phu', '#t-daily', '#t-creators', '#t-products']) {
+    for (const id of ['#kpis', '#kpis-phu', '#t-daily', '#t-creators', '#t-products', '#t-creator-data']) {
       const el = $(id); if (el) el.innerHTML = '';
     }
     $('#chart').innerHTML = '<p class="empty">Không tải được dữ liệu.</p>';
