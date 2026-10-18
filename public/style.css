@@ -360,13 +360,22 @@ th .arrow { display: inline-block; width: 1em; color: var(--up-color-primary); }
 
 /* ===== Bieu do cot (div, khong SVG -- chu luon sac net) ==================== */
 .chart-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
-.chart-head select { margin-left: auto; }
-.bars { display: flex; align-items: flex-end; gap: var(--s1); }
+.chart-controls { display: flex; gap: var(--s2); margin-left: auto; flex-wrap: wrap; }
+.chart-controls select { min-width: 150px; margin-left: 0; }
+.chart-note { margin: calc(var(--s1) * -1) 0 var(--s3); color: var(--up-block-muted-foreground); font-size: var(--app-text-xs); }
+.bars { display: flex; align-items: flex-end; gap: var(--s2); overflow-x: auto; padding: var(--s4) 0 var(--s1); }
 .bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: var(--s1); }
-.bar-v { font-size: 11px; color: var(--up-block-muted-foreground); font-variant-numeric: tabular-nums; }
+.bar-v { font-size: 11px; color: var(--up-block-muted-foreground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bar-track { width: 100%; height: 150px; display: flex; align-items: flex-end; }
-.bar-fill { width: 100%; min-height: 2px; border-radius: var(--s1) var(--s1) 0 0; background: var(--up-color-primary); }
+.bar-fill { width: 100%; min-height: 2px; border-radius: var(--s1) var(--s1) 0 0; background: var(--up-color-primary); transition: height 180ms ease, opacity 180ms ease; }
+.bar-col:hover .bar-fill, .bar-col:focus-within .bar-fill { opacity: .78; }
 .bar-x { font-size: 11px; color: var(--up-block-muted-foreground); white-space: nowrap; }
+@media (max-width: 720px) {
+  .chart-controls { width: 100%; margin-left: 0; }
+  .chart-controls select { flex: 1; min-width: 0; }
+  .bar-col { min-width: 74px; }
+  .bar-track { height: 128px; }
+}
 
 /* Thanh ty trong. Dung 4 sac do khac nhau chu khong chi khac mau -- doc duoc ca
  * khi in den trang hoac khi nguoi dung khong phan biet duoc mau. */

@@ -76,8 +76,16 @@
         <div class="card chart-card">
           <div class="chart-head">
             <h2>Xu hướng</h2>
-            <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
+            <div class="chart-controls">
+              <select id="c-metric" aria-label="Chọn chỉ số cho biểu đồ"></select>
+              <select id="c-group" aria-label="Gom dữ liệu biểu đồ">
+                <option value="1">Theo ngày</option>
+                <option value="3" selected>Gom 3 ngày</option>
+                <option value="7">Theo tuần</option>
+              </select>
+            </div>
           </div>
+          <p class="chart-note" id="chart-note"></p>
           <div id="chart"></div>
         </div>
 

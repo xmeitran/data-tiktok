@@ -484,21 +484,44 @@ function renderKpis() {
 // Bieu do cot bang HTML/CSS, khong dung SVG: SVG phai chon giua "none" (keo gian lam
 // meo chu) va "meet" (can giua, chua hai ben trong). Cot chi la div co chieu cao thi
 // khong bao gio meo, chu luon sac net, va tu co gian theo be rong the.
+const TREND_AVERAGE_KEYS = new Set(['aov', 'commission_rate', 'refund_rate']);
+
+function trendValue(rows, key) {
+  const values = rows.map(d => Number(d[key])).filter(Number.isFinite);
+  if (!values.length) return 0;
+  if (TREND_AVERAGE_KEYS.has(key)) return values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function trendRange(rows) {
+  const first = rows[0]?.day;
+  const last = rows.at(-1)?.day;
+  return first && last && first !== last ? `${dayLabel(first)} – ${dayLabel(last)}` : dayLabel(first);
+}
+
 function renderChart() {
   const key = $('#c-metric').value || 'gmv';
   const m = byKey()[key];
   const days = inPeriod();
   if (!days.length) { $('#chart').innerHTML = '<p class="empty">Chưa có dữ liệu ngày nào.</p>'; return; }
-  const vals = days.map(d => Number(d[key]) || 0);
+  const size = Number($('#c-group')?.value || 3);
+  const groups = [];
+  for (let i = 0; i < days.length; i += size) groups.push(days.slice(i, i + size));
+  const vals = groups.map(rows => trendValue(rows, key));
   const max = Math.max(...vals, 1);
+  const mode = TREND_AVERAGE_KEYS.has(key) ? 'trung bình' : 'tổng';
+  $('#chart-note').textContent = size === 1
+    ? 'Mỗi cột là một ngày · rê chuột để xem giá trị chi tiết'
+    : `${size === 7 ? 'Theo tuần' : `Mỗi ${size} ngày`} · ${mode} của các ngày trong nhóm · rê chuột để xem khoảng ngày`;
   $('#chart').innerHTML = `<div class="bars" role="img"
-      aria-label="Biểu đồ ${esc(m?.label ?? key)} theo ngày">
-    ${days.map((d, i) => {
+      aria-label="Biểu đồ ${esc(m?.label ?? key)} ${size === 1 ? 'theo ngày' : `gom ${size} ngày`}">
+    ${groups.map((rows, i) => {
       const v = vals[i];
-      return `<div class="bar-col" title="${esc(d.day)}: ${fmt(v, m?.unit)}">
+      const range = trendRange(rows);
+      return `<div class="bar-col" title="${esc(range)} · ${esc(mode)}: ${fmt(v, m?.unit)} · ${rows.length} ngày">
         <div class="bar-v">${fmtKpi(v, m?.unit)}</div>
         <div class="bar-track"><div class="bar-fill" style="height:${((v / max) * 100).toFixed(1)}%"></div></div>
-        <div class="bar-x">${esc(dayLabel(d.day))}</div>
+        <div class="bar-x">${esc(size === 1 ? dayLabel(rows[0].day) : range)}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -1465,6 +1488,7 @@ $('#btn-sync-creator-data').addEventListener('click', (e) => syncCreatorData(e.c
 
 $('#btn-export').addEventListener('click', exportCsv);
 $('#c-metric').addEventListener('change', renderChart);
+$('#c-group').addEventListener('change', renderChart);
 $('#creator-data-q').addEventListener('input', renderCreatorData);
 
 $('#period').addEventListener('click', async (e) => {
