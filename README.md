@@ -11,6 +11,7 @@ src/sync.js      <- kéo SKU-order theo ngày -> gộp theo creator -> metric_va
 src/server.js    <- REST API + callback OAuth
 src/auth.js      <- basic auth cho dashboard
 db/schema.sql    <- authorizations, category_assets, creators, metric_values, sync_runs
+public/coverage.js <- phân loại ngày rỗng: "thiếu thật" hay "job chưa kéo tới"
 public/          <- dashboard 4 tab (tĩnh, không framework)
 ```
 
@@ -146,6 +147,28 @@ tay một lần. Từ bản này trở đi mọi run đều có nhịp nên khô
 
 `node test-runs.mjs` phủ: quá ngưỡng thì dọn, còn nhịp thì tha, không nhịp thì miễn, đập nhịp
 cứu được run sắp bị coi là chết, ghi chú cũ không bị ghi đè, dọn hai lần không nhân đôi.
+
+## Phủ sóng dữ liệu
+
+Bảng `sync_runs` nói **run nào** lỗi, không nói **ngày nào** còn khuyết — mà lỗ nằm ở ngày:
+một backfill dài gặp lỗi mạng giữa chừng sẽ bỏ lại vài ngày rỗng rồi vẫn chạy tiếp.
+
+`GET /api/coverage` trả về mỗi ngày trong cửa sổ kèm số dòng thô, cộng `dang_keo` (ngày của
+dòng ghi gần nhất) và nhịp độ 10 phút qua. Dashboard vẽ thành lịch ô vuông ngay tab Hiệu suất:
+xanh = có dữ liệu, cam nháy = đang kéo, xám = chưa kéo tới, **đỏ = thiếu**.
+
+Chia "thiếu" với "chưa kéo tới" bằng mốc `dang_keo`, vì job chạy theo chiều cũ → mới:
+ngày rỗng **sau** con trỏ là chưa tới, **trước** con trỏ là bị bỏ lại. Không có job nào chạy
+thì mọi ngày rỗng đều là thiếu thật. `node test-coverage.mjs` phủ phần này.
+
+Nút **Vá N ngày thiếu** gọi `POST /api/sync {days, skipExisting:true}` — bỏ qua ngày đã có raw
+nên chỉ kéo đúng mấy ngày khuyết. Chạy **nền**, trả về ngay: một lần vá có thể mất vài giờ,
+không giữ request HTTP mở lâu như vậy. Đang có job chạy thì trả `409` thay vì kéo song song —
+hai job gọi API cùng lúc chính là thứ sinh ra timeout `2000011008` phía TikTok.
+
+`dang_keo` đọc từ dòng ghi **gần nhất**, không phải `max(day)`: 7 ngày gần đây thường đã có sẵn
+từ lần kéo trước nên `max(day)` luôn là hôm qua trong khi job còn ở tháng 7. Cần index
+`sku_orders_collected`, nếu không mỗi lần hỏi phải quét cả bảng.
 
 ## Giới hạn đã biết
 

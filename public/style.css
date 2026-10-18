@@ -87,10 +87,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: v
 .muted { color: var(--up-block-muted-foreground); font-size: var(--app-text-sm); }
 .nowrap { white-space: nowrap; }
 .hide  { display: none !important; }
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-}
 
 /* ===== Khung: sidebar + vung noi dung ====================================== */
 .app { display: grid; grid-template-columns: var(--up-block-sidebar-width) minmax(0, 1fr); min-height: 100svh; }
@@ -177,7 +173,7 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .btn.ghost:hover:not(:disabled) { background: var(--up-block-surface-muted); border-color: var(--color--primary--300); }
 .btn.sm { min-height: 34px; padding: 0 var(--s3); font-size: var(--app-text-sm); }
 
-select, input[type="search"] {
+select, input[type="search"], input[list] {
   min-height: var(--up-block-control-min-height);
   padding: 0 var(--s3); border: 1px solid var(--up-block-border);
   border-radius: var(--up-block-control-radius);
@@ -277,6 +273,10 @@ select, input[type="search"] {
 table { width: 100%; border-collapse: collapse; font-size: var(--app-text-sm); }
 th, td { padding: var(--s2) var(--s3); text-align: left; vertical-align: middle; }
 thead th {
+  /* `position: sticky` o day KHONG bao gio dinh: `.table-card { overflow-x: auto }` lam
+   * the thanh scroll container ca hai truc, ma no khong gioi han chieu cao nen khong co
+   * gi de dinh vao. Giu lai cho cot ghim (td.rank/td.who can z-index tren nen), nhung
+   * khong giu ao tuong rang header se dung yen khi cuon doc. */
   position: sticky; top: 0; z-index: 1;
   background: var(--up-block-surface); color: var(--up-block-muted-foreground);
   font-size: var(--app-text-xs); font-weight: 500; white-space: nowrap;
@@ -370,22 +370,31 @@ th .arrow { display: inline-block; width: 1em; color: var(--up-color-primary); }
 .alert-why { flex-basis: 100%; }
 
 th.rank, td.rank {
-  width: 1%; padding-right: var(--s1); text-align: right;
+  /* `width: 1%` co thu cot lai vua khit, nhung KHONG chan ngat dong -- nen "10" bi
+   * be thanh "1" / "0" tren hai dong. min-width du cho 3 chu so + nowrap. */
+  width: 1%; min-width: 34px; white-space: nowrap;
+  padding-right: var(--s1); text-align: right;
   color: var(--up-block-muted-foreground); font-variant-numeric: tabular-nums;
 }
-/* Chi O THAN bang moi la flex (avatar + ten + co); header `th.who` giu nguyen la o bang
- * binh thuong, neu khong mui ten sort va nhan se bi day lech. */
-td.who { display: flex; align-items: center; gap: var(--s2); }
+/* Flex nam o DIV BEN TRONG, khong phai tren chinh <td>: mot <td> display:flex bi tach
+ * khoi layout bang va day moi dong len 79px thay vi 38px. */
+.who-in { display: flex; align-items: center; gap: var(--s2); }
 .av { flex: none; width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--app-page); }
 .av.ph { display: grid; place-items: center; color: var(--up-block-muted-foreground); font-size: 11px; font-weight: 600; }
 .who-t { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-width: 0; }
 .flags { display: inline-flex; gap: var(--s1); flex-wrap: wrap; }
+/* O canh bao: nhieu co thi xuong dong trong CHINH o do, khong lan sang cot ben. */
+td.flags-cell { max-width: 210px; }
+.flags-in { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.flags-in .muted { font-size: var(--app-text-xs); }
 .flag { padding: 1px var(--s2); border-radius: 999px; font-size: 11px; white-space: nowrap; }
 .flag.bad  { background: var(--app-bad-soft);  color: var(--app-bad-ink); }
 .flag.warn { background: var(--app-warn-soft); color: var(--app-warn-ink); }
 .flag.good { background: var(--app-good-soft); color: var(--app-good-ink); }
 
-.cd { font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.3; }
+/* Cung dong voi con so, khong xuong dong: delta duoi dang block lam moi dong bang
+ * cao 78px -- 115 dong thanh 9.300px. Inline thi dong con mot nua. */
+.cd { display: inline; margin-left: var(--s1); font-size: 11px; font-variant-numeric: tabular-nums; }
 .cd.up   { color: var(--app-good-ink); }
 .cd.down { color: var(--app-bad-ink); }
 
@@ -462,7 +471,12 @@ tbody tr.row-good td.rank { box-shadow: inset 3px 0 0 var(--app-good); }
 .pit { color: var(--app-warn-ink); font-size: var(--app-text-sm); }
 .derived { color: var(--up-block-muted-foreground); font-size: var(--app-text-sm); }
 mark { background: var(--color--yellow--50); color: inherit; padding: 0 2px; border-radius: 2px; }
-.doclink { margin-left: auto; color: var(--up-color-primary); font-size: var(--app-text-xs); }
+.doclink {
+  margin-left: auto; color: var(--up-color-primary); font-size: var(--app-text-xs);
+  /* inline-flex + min-height: la the <a> nen mac dinh chi cao bang dong chu (19px),
+   * duoi nguong cham tren dien thoai. */
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 var(--s1);
+}
 
 /* ===== He thong ============================================================ */
 .head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
@@ -510,8 +524,8 @@ mark { background: var(--color--yellow--50); color: inherit; padding: 0 2px; bor
    * cat ten -- ten day du van o `title`, va cot van ghim nen khong bao gio mat ngu canh. */
   .av { display: none; }
   td.who, th.who { max-width: 116px; }
-  .who-t { flex-wrap: nowrap; overflow: hidden; }
-  .who-t > span:first-child, td.who .flags { min-width: 0; }
+  .who-in { flex-wrap: nowrap; overflow: hidden; }
+  .who-t { overflow: hidden; text-overflow: ellipsis; }
   .flag { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
 }
 
@@ -560,21 +574,58 @@ mark { background: var(--color--yellow--50); color: inherit; padding: 0 2px; bor
  * 16 cot thi phai cuon ngang, ma cuon la mat ten creator -> con lai mot hang so
  * khong biet cua ai. Ghim `#` va cot ten vao mep trai khi cuon ngang. */
 th.rank, td.rank { position: sticky; left: 0; z-index: 2; background: var(--up-block-surface); }
-th.who, td.who   { position: sticky; left: 32px; z-index: 2; background: var(--up-block-surface); }
+th.who, td.who   { position: sticky; left: 34px; z-index: 2; background: var(--up-block-surface); white-space: nowrap; }
 thead th.rank, thead th.who { z-index: 3; }
 tbody tr:hover td.rank, tbody tr:hover td.who { background: var(--up-block-surface-muted); }
 /* Vach phan cach cho biet phan ghim ket thuc o dau. */
 td.who, th.who { box-shadow: 1px 0 0 var(--app-line-soft); }
 
-.more { display: flex; justify-content: center; }
-.more:empty { display: none; }
 
 /* ===== Cot ghi chu cua lich su sync =======================================
  * Ghi chu chua NGUYEN VAN loi TikTok tra ve (co dong dai hang nghin ky tu), nen
  * 13 dong keo bang len 2.671px -- 205px moi dong. Cat con 2 dong; noi dung day du
  * nam o `title`, va o van chon-boi-text duoc de copy khi can dieu tra. */
-td.note {
-  max-width: 420px;
+/* Clamp o DIV ben trong, khong phai tren <td>: `-webkit-box` la gia tri display cua
+ * flexbox ban cu, dat len <td> thi tach o khoi layout bang -- dung cai bay da lam moi
+ * dong bang creator cao 79px thay vi 43px. */
+td.note { max-width: 420px; }
+td.note > div, td.note {
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden;
 }
+
+/* ---------- Phủ sóng dữ liệu ---------- */
+/* 287 ô cho 287 ngày: mật độ là điểm chính, một lỗ giữa kỳ phải thấy được mà không cuộn.
+   14px là ngưỡng còn trỏ chuột vào được mà vẫn vừa 10 tháng trong một màn. */
+.cov { display: grid; gap: var(--s3); }
+.cov-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.cov-head h2 { margin: 0; }
+.cov-head .btn { margin-left: auto; }
+.cov-bar {
+  height: 8px; border-radius: 999px; overflow: hidden;
+  background: var(--color--neutral--200);
+}
+.cov-bar > i { display: block; height: 100%; background: var(--app-good); transition: width .4s; }
+.cov-stat { font-size: var(--app-text-sm); }
+.cal { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s4); }
+.cal-m { display: grid; gap: var(--s1); }
+.cal-ml { font-size: var(--app-text-xs); color: var(--up-block-muted-foreground); }
+.cal-d { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 14px); gap: 2px; }
+.c {
+  display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+  background: var(--color--neutral--200);
+}
+.c-has  { background: var(--app-good); }
+.c-miss { background: var(--app-bad); }
+.c-wait { background: var(--color--neutral--200); }
+/* Ngày đang kéo: viền đậm + nháy. Đây là thứ duy nhất trên trang đang thay đổi thật. */
+.c-now  { background: var(--app-warn-ink); animation: cov-pulse 1.4s ease-in-out infinite; }
+@keyframes cov-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .c-now { animation: none; outline: 2px solid var(--app-warn-ink); outline-offset: 1px; }
+  .cov-bar > i { transition: none; }
+}
+.cov-legend { display: flex; gap: var(--s4); flex-wrap: wrap; font-size: var(--app-text-xs); }
+.cov-legend span { display: inline-flex; align-items: center; gap: var(--s2); }
+.cov-miss-list { font-size: var(--app-text-sm); line-height: 2; }
+.cov-miss-list code { background: var(--app-bad-soft); color: var(--app-bad-ink); }

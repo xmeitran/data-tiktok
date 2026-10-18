@@ -203,3 +203,7 @@ create table if not exists auth_states (
 -- Nhip tim: job con song thi dap nhip, qua STALE_MINUTES khong co nhip thi reapStale()
 -- danh dau 'error'. Them sau nen de nullable; run cu khong co nhip thi tinh theo started_at.
 alter table sync_runs add column if not exists heartbeat_at timestamptz;
+
+-- Giao dien phu song can biet job DANG keo ngay nao: "dong moi ghi gan nhat" chi re khi
+-- co index tren collected_at. Khong co no thi moi lan hoi phai quet ca bang (3.3M dong).
+create index if not exists sku_orders_collected on sku_orders (collected_at desc);

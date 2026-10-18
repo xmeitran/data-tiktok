@@ -32,10 +32,10 @@
     <div class="topbar">
       <div class="crumb" id="crumb">Hiệu suất</div>
       <div class="seg period" id="period" role="group" aria-label="Khoảng thời gian">
-        <button data-days="1">1 ngày</button>
+        <button data-days="1" aria-pressed="false">1 ngày</button>
         <button data-days="7" aria-pressed="true">7 ngày</button>
-        <button data-days="30">30 ngày</button>
-        <button data-days="">Tất cả</button>
+        <button data-days="30" aria-pressed="false">30 ngày</button>
+        <button data-days="" aria-pressed="false">Tất cả</button>
       </div>
       <span class="fresh" id="fresh" role="status" aria-live="polite"></span>
     </div>
@@ -44,6 +44,8 @@
       <section id="tab-hieu-suat" role="tabpanel" aria-label="Hiệu suất">
         <div class="sec-head"><h1>Hiệu suất</h1></div>
         <div class="banner" id="sync-banner" role="status" aria-live="polite"></div>
+        <!-- Phu song: "keo xong chua, miss ngay nao" truoc day chi tra loi duoc bang psql. -->
+        <div id="cov-live" role="status" aria-live="polite"></div>
 
         <details class="xep keo">
           <summary><h2>Kéo dữ liệu</h2></summary>
@@ -119,7 +121,6 @@
         </div>
         <div id="creator-drill"></div>
         <div class="card table-card"><table id="t-creators"></table></div>
-        <div id="c-more" class="more"></div>
       </section>
 
       <section id="tab-san-pham" class="hide" role="tabpanel" aria-label="Sản phẩm">
@@ -143,10 +144,14 @@
                    aria-label="Tìm sản phẩm hoặc shop" autocomplete="off">
             <kbd>/</kbd>
           </div>
+          <!-- input + datalist chu khong phai select: ky "Tat ca" co 3.500 shop,
+               mot select 3.500 muc khong phai bo loc ma la mot dong rom khac. -->
+          <input id="p-shop" list="p-shop-list" placeholder="Lọc theo shop…"
+                 aria-label="Lọc theo shop" autocomplete="off">
+          <datalist id="p-shop-list"></datalist>
           <span class="count" id="p-count" aria-live="polite"></span>
         </div>
         <div class="card table-card"><table id="t-products"></table></div>
-        <div id="p-more" class="more"></div>
       </section>
 
       <section id="tab-chi-so" class="hide" role="tabpanel" aria-label="Chỉ số">

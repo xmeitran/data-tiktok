@@ -349,9 +349,12 @@ app.get('/api/creator-daily', async (req, res, next) => {
 app.get('/api/products', async (req, res, next) => {
   try {
     const days = Number(req.query.days) || null;
-    // Tham so hoa + ep vao [1, 500]: truoc day noi suy thang vao SQL, nen ?limit=-1
-    // thanh `limit -1` va tra 500 thay vi tu choi tu te.
-    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 500));
+    // Khong co `limit` => tra HET. Bang nay de TIM, nen cat bot o server co nghia la
+    // co thu tim khong bao gio thay. Co `limit` thi van ep vao [1, 5000] de mot tham so
+    // bay ba khong keo ca bang ve. Tham so hoa, khong noi suy vao SQL.
+    const asked = Number(req.query.limit);
+    const limit = Number.isFinite(asked) && asked > 0 ? Math.min(asked, 5000) : null;
+    const gioiHan = limit === null ? '' : 'limit $2';
     // Neo vao ORDER_DAY -- CUNG mot moc voi KPI, bieu do va bang creator.
     // Truoc day bang nay neo vao max(day) cua rieng sku_orders, ma hai bang khong bang
     // nhau: 3 ngay 12-14/10 duoc keo boi ban sync CU, truoc khi co writeRaw, nen co
@@ -374,7 +377,7 @@ app.get('/api/products', async (req, res, next) => {
                 -- Van can nullif du writeRaw da ghi null: cac dong ghi TRUOC fix con la 0.
                 round(avg(nullif(std_rate, 0)) / 100.0, 2)::float avg_rate
          from sku_orders where ${window} and ${VALID_ROW}
-         group by product_id order by gmv desc limit $2`, [days, limit]),
+         group by product_id order by gmv desc ${gioiHan}`, limit === null ? [days] : [days, limit]),
       q(`select shop_name,
                 sum(price_amount * quantity)::float gmv,
                 count(distinct order_id)::int orders,
@@ -382,7 +385,7 @@ app.get('/api/products', async (req, res, next) => {
                 count(distinct creator_username)::int creators,
                 sum(est_commission)::float est_commission
          from sku_orders where ${window} and ${VALID_ROW} and shop_name is not null
-         group by shop_name order by gmv desc limit $2`, [days, limit]),
+         group by shop_name order by gmv desc ${gioiHan}`, limit === null ? [days] : [days, limit]),
       q(`select coalesce(content_type,'(trong)') content_type,
                 sum(price_amount * quantity)::float gmv,
                 count(distinct order_id)::int orders,
@@ -394,10 +397,15 @@ app.get('/api/products', async (req, res, next) => {
 
     // Vi sao bang rong: thieu dong tho cho ky nay, hay that su khong co don nao?
     // Hai chuyen khac han nhau, va chi API moi phan biet duoc.
+    // `exists` chu khong phai `count`: giao dien chi can biet "ky nay co dong tho nao
+    // khong" de giai thich khi bang rong. Dem het 3,3 trieu dong mat 7,7 GIAY, con
+    // exists mat 2ms. Tong so san pham/shop cung khong hoi o day nua -- khong con limit
+    // thi chinh do dai mang tra ve DA LA tong, hoi lai DB la tra tien hai lan cho mot
+    // con so minh da cam trong tay.
     const cov = await q(
       `select max("day")::text newest_raw,
               ${ORDER_DAY}::text anchor,
-              count(*) filter (where ${window})::int rows_in_window
+              exists(select 1 from sku_orders where ${window}) has_rows
          from sku_orders`, [days]);
 
     res.json({
@@ -464,8 +472,56 @@ app.get('/api/metric-values', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// reapStale() TRUOC: run da chet nhung con ghi 'running' thi khong duoc phep chan lan va moi.
+const running = async () => {
+  await reapStale();
+  return (await q(`select 1 from sync_runs where status = 'running' limit 1`)).rowCount > 0;
+};
+
+// Phu song du lieu THO theo tung ngay + tien do job dang chay. Tach khoi /api/system vi
+// giao dien phai hoi lai moi 15 giay trong luc keo -- khong keo theo ca uy quyen va cipher.
+// `dang_keo` doc tu dong moi ghi gan nhat, KHONG phai max(day): 7 ngay gan day da co san
+// tu lan keo truoc nen max(day) luon la hom qua, trong khi job con dang o thang 7.
+app.get('/api/coverage', async (req, res, next) => {
+  try {
+    await reapStale();
+    // Khong truyen `days` thi cua so = tu ngay cu nhat DANG CO den hom qua. Tu gian theo
+    // du lieu, khong phai hang so 287 nam trong giao dien roi lech khi backfill xa hon.
+    const days = req.query.days ? Math.min(Math.max(Number(req.query.days), 1), 400) : null;
+    const [cal, run, now] = await Promise.all([
+      q(`with b as (select case when $1::int is null
+                               then coalesce((select min(day) from sku_orders), current_date - 7)
+                               else current_date - $1::int end d0),
+              w as (select generate_series((select d0 from b), current_date - 1, '1 day')::date d)
+         -- AS la BAT BUOC: day va rows la keyword, alias tran thi Postgres bao loi cu phap.
+         select w.d::text as day, coalesce(s.n, 0)::int as rows
+         from w left join (select day, count(*) n from sku_orders
+                           where day >= (select d0 from b) group by day) s on s.day = w.d
+         order by w.d`, [days]),
+      q(`select id, started_at, heartbeat_at,
+                extract(epoch from now() - coalesce(heartbeat_at, started_at))::int since_beat
+         from sync_runs where status = 'running' order by id desc limit 1`),
+      // Nhip do thuc te de giao dien tu tinh ETA: khong doan bang hang so, ngay nang
+      // (40k dong) cham gap 4 lan ngay nhe.
+      q(`select (select day::text from sku_orders order by collected_at desc limit 1) dang_keo,
+                count(distinct day)::int days_10m, count(*)::int rows_10m
+         from sku_orders where collected_at > now() - interval '10 minutes'`),
+    ]);
+    res.json({ days, calendar: cal.rows, running: run.rows[0] ?? null, ...now.rows[0] });
+  } catch (e) { next(e); }
+});
+
 app.post('/api/sync', async (req, res, next) => {
-  try { res.json(await runSync({ days: Number(req.body?.days) || 7 })); } catch (e) { next(e); }
+  const days = Math.min(Math.max(Number(req.body?.days) || 7, 1), 400);
+  // Va ngay thieu: bo qua ngay da co raw. Mot lan va co the mat vai gio nen KHONG giu
+  // request HTTP mo cho den khi xong -- tra ve ngay, giao dien theo doi qua /api/coverage.
+  if (req.body?.skipExisting) {
+    // Hai job keo song song la nguyen nhan that cua timeout 2000011008 phia TikTok.
+    if (await running()) return res.status(409).json({ error: 'đang có job chạy, đợi nó xong' });
+    runSync({ days, skipExisting: true }).catch(e => console.error('sync nen:', e));
+    return res.json({ started: true, days });
+  }
+  try { res.json(await runSync({ days })); } catch (e) { next(e); }
 });
 
 // Sync creator: khong nhan `days`. 3/4 endpoint creator khong tra ve thoi diem tao nen

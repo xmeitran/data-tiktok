@@ -1,6 +1,7 @@
 import { periods } from './period.js';
 import { csvCell } from './csv.js';
 import { summarize, alertsFor, worst, change, RULES } from './alerts.js';
+import { classify, eta } from './coverage.js';
 
 // Mot loi JS khong duoc bat = trang trang, khong manh moi nao. Bat o day de:
 // (1) hien thang len trang, (2) gui ve server cho vao log.
@@ -30,7 +31,17 @@ addEventListener('error', (e) => reportError('error', e.error ?? e.message));
 addEventListener('unhandledrejection', (e) => reportError('promise', e.reason));
 
 const $ = (s) => document.querySelector(s);
-const get = (u) => fetch(u).then(r => r.json());
+// Kiem r.ok: khong co no thi body loi cua server ({error: "..."}) di tiep nhu du lieu
+// that, va giao dien tu bao "chua co du lieu" trong khi that ra la server dang hong --
+// hai trang thai rat khac nhau ma nguoi dung thay giong het.
+const get = async (u) => {
+  const r = await fetch(u);
+  const body = await r.json().catch(() => null);
+  if (!r.ok || body === null) {
+    throw new Error(`${u} -> ${r.status}${body?.error ? `: ${body.error}` : ''}`);
+  }
+  return body;
+};
 const vnd = new Intl.NumberFormat('vi-VN');
 const compact = new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 });
 const fmt = (v, unit) =>
@@ -90,12 +101,16 @@ const byKey = () => Object.fromEntries(METRICS.map(m => [m.key, m]));
 const skelRows = (n = 6) =>
   `<tbody aria-busy="true">${Array.from({ length: n }, () =>
     '<tr><td><div class="skel skel-row"></div></td></tr>').join('')}</tbody>`;
-const skelKpis = (n = 6) =>
+const skelKpis = (n = 4) =>
   Array.from({ length: n }, () =>
     '<div class="card kpi" aria-busy="true"><div class="skel skel-row"></div></div>').join('');
 
 function showLoading() {
-  $('#kpis').innerHTML = skelKpis();
+  $('#kpis').innerHTML = skelKpis(4);
+  // #kpis-phu va #chart cung phai vao trang thai tai: bo sot chung thi khi doi ky, hai
+  // vung do giu nguyen SO CUA KY CU nam canh skeleton cua ky moi -- doc ra tuong la so that.
+  $('#kpis-phu').innerHTML = skelKpis(9);
+  $('#chart').innerHTML = '<div class="skel skel-row" style="height:150px"></div>';
   $('#t-daily').innerHTML = skelRows(5);
   $('#t-creators').innerHTML = skelRows(8);
   $('#t-products').innerHTML = skelRows(8);
@@ -277,14 +292,15 @@ let ALERT_FILTER = '';            // '' = tat ca; hoac stopped|drop|refund|rise
 // Bo "Gon" la nhung cot du de QUYET DINH; bo day du van con nguyen cho ai can doi chieu.
 // MANG chu khong phai Set: day la thu tu DOC (ai -> ban duoc bao nhieu -> bao nhieu don
 // -> moi don bao nhieu -> minh an bao nhieu -> co van de gi khong), khong phai thu tu khai bao.
-const CCOLS_GON = ['username', 'net_gmv', 'orders', 'aov', 'est_commission', 'refund_rate'];
+const CCOLS_GON = ['username', 'alerts', 'net_gmv', 'orders', 'aov', 'est_commission', 'refund_rate'];
 let CVIEW = 'gon';                // gon | day-du
-// 114 dong render het = bang cao 7.611px. Khong ai cuon toi cuoi; ai can thi bam xem them.
-const CLIMIT = 30;
-let CSHOW_ALL = false;
+
 // `delta: true` = cot co so sanh voi ky truoc ngay duoi con so.
 const CCOLS = [
   { key: 'username',        label: 'Creator',      num: false },
+  // Cot rieng: truoc day co nam ngay sau ten nen moi dong co o mot vi tri khac nhau,
+  // vung giua bang so le va mat khong bam duoc vao dau de quet.
+  { key: 'alerts',          label: 'Cảnh báo',     num: false },
   { key: 'days',            label: 'Số ngày',      num: true },
   { key: 'gmv',             label: 'GMV',          num: true , delta: true },
   { key: 'net_gmv',         label: 'GMV thực',     num: true , delta: true },
@@ -316,6 +332,13 @@ function creatorRows() {
       const { key, dir } = SORT;
       const col = CCOLS.find(c => c.key === key);
       if (col?.num) return (Number(a[key]) - Number(b[key])) * dir;
+      // Cot canh bao sap theo MUC NANG (bad > warn > good > khong co), khong phai theo
+      // chu cai -- xep "Hoan 23%" canh "GMV giam 40%" theo alphabet thi vo nghia.
+      if (key === 'alerts') {
+        const w = { bad: 3, warn: 2, good: 1 };
+        const v = (r) => Math.max(0, ...r.alerts.map(x => w[x.level] ?? 0));
+        return (v(a) - v(b)) * dir;
+      }
       return String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * dir;
     });
 }
@@ -379,26 +402,28 @@ function renderCreators() {
 
   // Cot ten: avatar + co canh bao. avatar_url nam san trong creator_profiles tu lau
   // ma chua cho nao dung den.
-  const nameCell = (r) => `<td class="who">
+  // Lop boc ben trong moi la flex. Dat `display:flex` thang len <td> pha layout bang:
+  // o do thanh mot hop block rieng, va moi dong cao 79px thay vi 38px.
+  const nameCell = (r) => `<td class="who"><div class="who-in">
     ${r.avatar_url
       ? `<img class="av" src="${esc(r.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
       : `<span class="av ph" aria-hidden="true">${esc((r.username[0] ?? '?').toUpperCase())}</span>`}
-    <span class="who-t">@${esc(r.username)}
-      ${r.alerts.length ? `<span class="flags">${r.alerts.map(a =>
-        `<span class="flag ${a.level}" title="${esc(a.text)}">${esc(a.text)}</span>`).join('')}</span>` : ''}
-    </span></td>`;
+    <span class="who-t">@${esc(r.username)}</span></div></td>`;
+
+  const alertCell = (r) => `<td class="flags-cell"><div class="flags-in">${
+    r.alerts.length
+      ? r.alerts.map(a => `<span class="flag ${a.level}">${esc(a.text)}</span>`).join('')
+      : '<span class="muted">—</span>'}</div></td>`;
 
   const cell = (r, c) => c.key === 'username' ? nameCell(r)
+    : c.key === 'alerts' ? alertCell(r)
     : c.num ? `<td class="num">${fmt(r[c.key], c.unit)}${c.delta ? cellDelta(r, c.key) : ''}</td>`
     : `<td>${d2(r[c.key])}</td>`;
   const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
-  // Tong van tinh tren TOAN BO dong khop bo loc, khong phai phan dang hien -- neu khong
-  // "Tong 114 creator" se doi theo viec bam "xem them", doc ra con so vo nghia.
-  const hien = CSHOW_ALL ? rows : rows.slice(0, CLIMIT);
 
   $('#t-creators').innerHTML = `
     <thead><tr>${head}</tr></thead>
-    <tbody>${hien.length ? hien.map((r, i) => {
+    <tbody>${rows.length ? rows.map((r, i) => {
       const w = worst(r.alerts);
       // Xep hang theo CHINH cot dang sort, nen doi cot sort la thu tu # doi theo.
       return `<tr class="${w ? 'row-' + w.level : ''}"><td class="rank">${i + 1}</td>${
@@ -407,15 +432,10 @@ function renderCreators() {
       : `<tr><td colspan="${cols.length + 1}" class="empty">${
           ALERT_FILTER ? 'Không creator nào trong nhóm này.'
                        : `Không có creator nào khớp “${esc($('#c-q').value)}”.`}</td></tr>`}</tbody>
-    ${hien.length ? `<tfoot><tr><td></td>${cols.map((c, i) =>
+    ${rows.length ? `<tfoot><tr><td></td>${cols.map((c, i) =>
       i === 0 ? `<td>Tổng ${rows.length} creator</td>`
       : SUMMABLE.has(c.key) ? `<td class="num">${fmt(sum(c.key))}</td>` : '<td></td>').join('')}</tr></tfoot>` : ''}`;
 
-  const con = rows.length - hien.length;
-  $('#c-more').innerHTML = con > 0
-    ? `<button class="btn ghost sm" id="btn-more">Xem thêm ${con} creator</button>`
-    : (CSHOW_ALL && rows.length > CLIMIT
-        ? `<button class="btn ghost sm" id="btn-less">Thu gọn về ${CLIMIT} dòng</button>` : '');
 }
 
 // CSV luon xuat DU 16 cot va DU dong: che do "Gon" va gioi han 30 dong la de DOC
@@ -423,7 +443,9 @@ function renderCreators() {
 function exportCsv() {
   const rows = creatorRows();
   const head = CCOLS.map(c => c.label).join(',');
-  const body = rows.map(r => CCOLS.map(c => csvCell(r[c.key])).join(',')).join('\n');
+  // Cot canh bao la mang object -> phai doi sang chu truoc khi vao CSV.
+  const oCsv = (r, c) => c.key === 'alerts' ? r.alerts.map(a => a.text).join('; ') : r[c.key];
+  const body = rows.map(r => CCOLS.map(c => csvCell(oCsv(r, c))).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url; a.download = `creators-${new Date().toISOString().slice(0,10)}.csv`;
@@ -437,8 +459,9 @@ function exportCsv() {
 // 'GMV' nhu truoc thi hai tab hien hai so khac nhau duoi cung mot ten.
 let PRODUCTS = { products: [], shops: [], byContentType: [], coverage: null };
 let PVIEW = 'products';
-// Cung ly do nhu bang creator: 200 dong render het = 8.080px, khong ai cuon toi cuoi.
-let PSHOW_ALL = false;
+// Loc thay cho limit: bang tra ve HET, nguoi dung thu hep bang bo loc chu khong bi
+// cat bot san. '' = khong loc.
+let PSHOP = '';
 let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } };
 
 const PCOLS = [
@@ -469,6 +492,9 @@ function productRows() {
   const sort = PSORT[PVIEW];
   const cols = pcols();
   return PRODUCTS[PVIEW]
+    // Khop CHINH XAC khi go dung ten (chon tu goi y), con lai la khop mot phan --
+    // go "colorkey" van ra ca "COLORKEY LUMINOUS VIET NAM".
+    .filter(r => !PSHOP || (r.shop_name ?? '').toLowerCase().includes(PSHOP.toLowerCase()))
     .filter(r => !kw || `${r.product_name ?? ''} ${r.shop_name ?? ''}`.toLowerCase().includes(kw))
     .sort((a, b) => {
       const col = cols.find(c => c.key === sort.key);
@@ -506,7 +532,7 @@ function renderShare() {
 // Khi do noi THANG ra, thay vi de nguoi dung thay bang rong va tuong la khong co don.
 function missingRawNote() {
   const c = PRODUCTS.coverage;
-  if (!c || c.rows_in_window) return '';
+  if (!c || c.has_rows) return '';
   if (!c.newest_raw) {
     return 'Chưa có dòng thô nào. Bảng này chỉ có dữ liệu từ lần kéo sau khi bật lưu dòng thô.';
   }
@@ -529,12 +555,26 @@ function renderContentCards() {
     : `<p class="sub">${missingRawNote()}</p>`;
 }
 
+// Lua chon cua o loc lay TU CHINH du lieu dang co, nen khong bao gio co lua chon
+// tro ve mot tap rong.
+function renderFilters() {
+  const shops = [...new Set(PRODUCTS.products.map(r => r.shop_name).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'vi'));
+
+  // datalist chi la goi y: go dung ten shop thi loc, go khong khop thi hien het
+  // (khong de nguoi dung roi vao bang rong ma khong hieu vi sao).
+  $('#p-shop-list').innerHTML = shops.map(v => `<option value="${esc(v)}"></option>`).join('');
+  $('#p-shop').placeholder = `Lọc theo shop… (${vnd.format(shops.length)})`;
+}
+
 function renderProducts() {
-  renderShare(); renderContentCards();
+  renderShare(); renderContentCards(); renderFilters();
   const cols = pcols();
   const rows = productRows();
   const all = PRODUCTS[PVIEW].length;
-  $('#p-count').textContent = `${rows.length}/${all} ${PVIEW === 'products' ? 'sản phẩm' : 'shop'}`;
+  const donVi = PVIEW === 'products' ? 'sản phẩm' : 'shop';
+  // Khong con limit: `all` la TOAN BO trong ky, `rows.length` la phan con lai sau bo loc.
+  $('#p-count').textContent = `${vnd.format(rows.length)}/${vnd.format(all)} ${donVi}`;
   const sort = PSORT[PVIEW];
 
   const head = cols.map(c => {
@@ -549,32 +589,23 @@ function renderProducts() {
     ? `<td class="num">${fmt(r[c.key], c.unit)}</td>`
     : `<td class="${c.wide ? 'wide' : 'clip'}" title="${esc(r[c.key])}">${esc(r[c.key] ?? '—')}</td>`;
   const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
-  // Tong van tinh tren TOAN BO dong khop bo loc, khong phai phan dang hien.
-  const hien = PSHOW_ALL ? rows : rows.slice(0, CLIMIT);
 
   $('#t-products').innerHTML = `
     <thead><tr>${head}</tr></thead>
-    <tbody>${hien.length ? hien.map(r => `<tr>${cols.map(c => cell(r, c)).join('')}</tr>`).join('')
+    <tbody>${rows.length ? rows.map(r => `<tr>${cols.map(c => cell(r, c)).join('')}</tr>`).join('')
       : `<tr><td colspan="${cols.length}" class="empty">${all
         ? `Không có gì khớp “${esc($('#p-q').value)}”.`
         // Ly do day du da nam o khoi the ben tren; nhac lai nguyen van o day chi lam on.
         : 'Không có dòng thô nào trong kỳ này — xem giải thích ở trên.'}</td></tr>`}</tbody>
-    ${hien.length ? `<tfoot><tr>${cols.map((c, i) =>
+    ${rows.length ? `<tfoot><tr>${cols.map((c, i) =>
       i === 0 ? `<td>Tổng ${rows.length}</td>`
       : PSUMMABLE.has(c.key) ? `<td class="num">${fmt(sum(c.key))}</td>` : '<td></td>').join('')}</tr></tfoot>` : ''}`;
-
-  const con = rows.length - hien.length;
-  const donVi = PVIEW === 'products' ? 'sản phẩm' : 'shop';
-  $('#p-more').innerHTML = con > 0
-    ? `<button class="btn ghost sm" id="btn-pmore">Xem thêm ${con} ${donVi}</button>`
-    : (PSHOW_ALL && rows.length > CLIMIT
-        ? `<button class="btn ghost sm" id="btn-pless">Thu gọn về ${CLIMIT} dòng</button>` : '');
 }
 
 async function loadProducts() {
-  // limit 200: bang nay de TIM va XEP HANG, khong phai de doc het. Keo het vai nghin san
-  // pham ra client chi lam cham ma khong ai cuon tới cuoi.
-  PRODUCTS = await get(`/api/products?limit=200${PERIOD ? `&days=${PERIOD}` : ''}`);
+  // Lay HET, khong gioi han: bang de TIM thi phai tim duoc trong toan bo du lieu,
+  // chu khong phai trong 200 dong dau. Loc va sap xep lam viec thu hep, khong phai limit.
+  PRODUCTS = await get(`/api/products${PERIOD ? `?days=${PERIOD}` : ''}`);
   renderProducts();
 }
 
@@ -699,6 +730,92 @@ function renderSystem() {
     ${assets}
     <div class="sec-head"><h2>Lịch sử kéo dữ liệu</h2></div>
     ${runs}`;
+}
+
+// ---------- Phủ sóng dữ liệu ----------
+// Hai cau hoi truoc gio phai mo psql moi tra loi duoc: "keo xong chua" va "miss ngay nao".
+// Lich 1 o = 1 ngay tra loi ca hai bang mat. Bang "Lich su keo du lieu" KHONG thay the duoc:
+// no noi run nao loi, chu khong noi NGAY nao con khuyet -- va lo giua ky thi nam o ngay.
+let COV = null, COV_TIMER = null;
+
+function covParts() {
+  const cal = COV?.calendar ?? [];
+  const cur = COV?.dang_keo ?? null;
+  return { cal, cur, ...classify(cal, COV ?? {}) };
+}
+
+const covEta = (left) => eta(left, COV?.days_10m ?? 0, COV?.running);
+
+function renderCoverage() {
+  const el = $('#cov-live'); if (!el || !COV) return;
+  const { cal, cur, pending, has, miss } = covParts();
+  if (!cal.length) { el.innerHTML = ''; return; }
+
+  const pct = (has.length / cal.length) * 100;
+  const left = miss.length + pending.size;
+  const beat = COV.running?.since_beat;
+  // Job dap nhip sau MOI ngay keo xong, nen khoang cach nhip = thoi gian keo mot ngay:
+  // ~1 phut ngay thuong, ~4 phut ngay sale 42k dong. Nguong 8 phut nam tren muc do va
+  // duoi nguong 15 phut cua reapStale() -- de giao dien noi duoc "dang im" trong khoang
+  // giua, thay vi 13 phut lien hien "dang keo" cho mot job da chet.
+  const stale = beat !== undefined && beat > 480;
+
+  const tag = COV.running
+    ? `<span class="tag ${stale ? 'warn' : 'grp'}">${stale ? `đang im ${Math.round(beat / 60)} phút` : 'đang kéo'}</span>`
+    : miss.length ? `<span class="tag warn">thiếu ${miss.length} ngày</span>`
+                  : '<span class="tag ok">đủ ngày</span>';
+
+  // Thang la don vi nguoi doc dung de noi "thang 7 bi khuyet", nen chia theo thang.
+  const months = new Map();
+  for (const d of cal) {
+    const k = d.day.slice(0, 7);
+    if (!months.has(k)) months.set(k, []);
+    months.get(k).push(d);
+  }
+  const cls = (d) => d.rows ? (d.day === cur ? 'c-now' : 'c-has')
+                            : pending.has(d.day) ? 'c-wait' : 'c-miss';
+  const cal_html = [...months].map(([k, list]) => `<div class="cal-m">
+      <span class="cal-ml">${k.slice(5)}/${k.slice(2, 4)}</span>
+      <div class="cal-d">${list.map(d => `<span class="c ${cls(d)}" title="${esc(d.day)} · ${
+        d.rows ? `${fmt(d.rows)} dòng` : pending.has(d.day) ? 'chưa kéo tới' : 'THIẾU'}"></span>`).join('')}</div>
+    </div>`).join('');
+
+  // Danh sach ngay thieu bang CHU: o vuong khong doc duoc bang ban phim, va day cung la
+  // thu nguoi dung copy ra de kiem lai tren Partner Center.
+  const missList = miss.length ? `<p class="cov-miss-list"><b>Ngày thiếu:</b> ${
+    miss.slice(0, 24).map(d => `<code>${esc(d.day)}</code>`).join(' ')}${
+    miss.length > 24 ? ` <span class="muted">+${miss.length - 24} ngày nữa</span>` : ''}</p>` : '';
+
+  el.innerHTML = `<div class="card cov">
+    <div class="cov-head">
+      <h2>Phủ sóng dữ liệu</h2>${tag}
+      <button class="btn ghost sm" id="btn-patch"${COV.running || !miss.length ? ' disabled' : ''}
+        title="${COV.running ? 'đợi job đang chạy xong' : miss.length ? 'kéo lại đúng những ngày khuyết' : 'không thiếu ngày nào'}"
+        >Vá ${miss.length} ngày thiếu</button>
+    </div>
+    <div class="cov-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+    <p class="cov-stat"><b>${has.length}/${cal.length}</b> ngày có dữ liệu
+      <span class="muted">(${esc(cal[0].day)} → ${esc(cal[cal.length - 1].day)})</span>
+      ${COV.running ? ` · đang kéo <b>${esc(cur ?? '—')}</b> · nhịp ${beat}s trước
+        ${left ? `· ${esc(covEta(left))}` : ''}` : ''}
+      ${miss.length ? ` · <span class="warn-text">khuyết ${miss.length} ngày</span>` : ''}
+    </p>
+    <div class="cal" aria-hidden="true">${cal_html}</div>
+    <div class="cov-legend" aria-hidden="true">
+      <span><i class="c c-has"></i> có dữ liệu</span>
+      <span><i class="c c-now"></i> đang kéo</span>
+      <span><i class="c c-wait"></i> chưa kéo tới</span>
+      <span><i class="c c-miss"></i> thiếu</span>
+    </div>
+    ${missList}</div>`;
+}
+
+async function loadCoverage() {
+  COV = await get('/api/coverage');
+  renderCoverage();
+  clearTimeout(COV_TIMER);
+  // Chi hoi lai khi co job chay: khong chay thi khong co gi doi, dung bat server quet moi 15s.
+  if (COV.running) COV_TIMER = setTimeout(() => loadCoverage().catch(e => reportError('coverage', e)), 15000);
 }
 
 async function loadCreators() {
@@ -830,6 +947,26 @@ function metricDetail(m, kw) {
   </article>`;
 }
 
+// Kieu xem BANG cua tab Chi so. Ham nay duoc GOI o renderWiki nhung chua bao gio duoc
+// dinh nghia -- bam nut "Bang" nem ReferenceError va khung noi dung tro nen trang.
+// Bang de so sanh nhieu metric cung luc, nen chi lay nhung cot doc luot duoc.
+function wikiTable(rows, kw) {
+  return `<div class="card table-card"><table>
+    <thead><tr>
+      <th>Chỉ số</th><th>Mã</th><th>Nhóm</th><th>Đơn vị</th><th>Cấp</th>
+      <th>Pipeline</th><th class="wide">Công thức</th>
+    </tr></thead>
+    <tbody>${rows.map(m => `<tr>
+      <td>${hl(m.label, kw)}</td>
+      <td><code>${hl(m.key, kw)}</code></td>
+      <td>${esc(m.group)}</td>
+      <td>${esc(m.unit)}</td>
+      <td>${esc(m.level)}</td>
+      <td>${status(m)}</td>
+      <td class="wide" title="${esc(m.formula)}">${hl(m.formula, kw)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
 function renderWiki() {
   const kw = $('#w-q').value.trim();
   const g = $('#w-group').value;
@@ -844,7 +981,15 @@ function renderWiki() {
   $('#w-count').textContent = `${rows.length}/${METRICS.length} metric`;
 
   if (!rows.length) {
-    $('#wiki').innerHTML = `<p class="empty">Không có metric nào khớp “${esc(kw)}”.</p>`;
+    // Noi dung bo loc NAO dang lam rong ket qua. Truoc day luon noi 'khop ""' ke ca khi
+    // nguoi dung khong go gi ma chi chon nhom/trang thai -- doc ra khong hieu vi sao rong.
+    const dieuKien = [
+      kw && `từ khoá “${esc(kw)}”`,
+      g && `nhóm “${esc(g)}”`,
+      st !== '' && (st === '1' ? 'trạng thái “Đã kéo”' : 'trạng thái “Chưa kéo”'),
+    ].filter(Boolean);
+    $('#wiki').innerHTML =
+      `<p class="empty">Không có chỉ số nào khớp ${dieuKien.join(' + ')}.</p>`;
     return;
   }
 
@@ -875,8 +1020,22 @@ $('#btn-sync').addEventListener('click', async (e) => {
     const r = await fetch('/api/sync', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ days }) }).then(x => x.json());
     alert(r.error ? `Lỗi: ${r.error}` : `Xong: ${r.written} dòng${r.errors?.length ? `\n${r.errors.join('\n')}` : ''}`);
-    await Promise.all([loadSummary(), loadCreators(), loadSystem(), loadProducts()]);
+    await Promise.all([loadSummary(), loadCreators(), loadSystem(), loadProducts(), loadCoverage()]);
   } finally { e.target.disabled = false; e.target.textContent = 'Kéo dữ liệu'; }
+});
+
+// Delegate: nut nay bi ve lai moi 15 giay nen gan listener thang vao no la mat ngay sau.
+$('#cov-live').addEventListener('click', async (e) => {
+  const b = e.target.closest('#btn-patch'); if (!b) return;
+  const { cal, miss } = covParts();
+  if (!miss.length) return;
+  b.disabled = true; b.textContent = 'Đang vá…';
+  // skipExisting: bo qua ngay da co raw -> chi keo dung may ngay khuyet. Server tra ve
+  // ngay va chay nen, khong giu request mo (va ca ky co the mat vai gio).
+  const r = await fetch('/api/sync', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ days: cal.length, skipExisting: true }) }).then(x => x.json());
+  if (r.error) { alert(`Lỗi: ${r.error}`); b.disabled = false; return; }
+  await loadCoverage();     // COV.running = true -> tu dong poll 15 giay/lan
 });
 
 // Hai nut, mot handler: hai luong chi khac tham so `role`, de rieng hai ham thi som muon
@@ -916,15 +1075,9 @@ $('#period').addEventListener('click', async (e) => {
   await Promise.all([loadCreators(), loadProducts()]);
   renderKpis(); renderChart(); renderDaily();
 });
-$('#c-q').addEventListener('input', () => { CSHOW_ALL = false; renderCreators(); });
+$('#c-q').addEventListener('input', renderCreators);
 $('#creator-drill').addEventListener('click', (e) => {
   if (e.target.closest('#drill-close')) { DRILL = null; $('#creator-drill').innerHTML = ''; }
-});
-
-$('#c-more').addEventListener('click', (e) => {
-  if (e.target.closest('#btn-more')) { CSHOW_ALL = true; renderCreators(); }
-  if (e.target.closest('#btn-less')) { CSHOW_ALL = false; renderCreators();
-    $('#t-creators').scrollIntoView({ block: 'nearest' }); }
 });
 
 $('#c-view').addEventListener('click', (e) => {
@@ -937,7 +1090,6 @@ $('#c-view').addEventListener('click', (e) => {
 $('#c-alerts').addEventListener('click', (e) => {
   const b = e.target.closest('.chip-f'); if (!b) return;
   ALERT_FILTER = b.dataset.code;
-  CSHOW_ALL = false;
   renderCreators();
 });
 
@@ -952,25 +1104,22 @@ $('#t-creators').addEventListener('click', (e) => {
   const th = e.target.closest('th[data-sort]'); if (!th) return;
   const k = th.dataset.sort;
   // Bam lai cung cot thi dao chieu; doi cot thi so giam dan, chu tang dan.
-  SORT = SORT.key === k ? { key: k, dir: -SORT.dir }
-       : { key: k, dir: CCOLS.find(c => c.key === k)?.num ? -1 : 1 };
+  // Cot so VA cot canh bao mac dinh giam dan: bam vao "Canh bao" la de thay ai dang
+  // co van de, khong phai de xem 90 dong "—" truoc.
+  const giamTruoc = k === 'alerts' || CCOLS.find(c => c.key === k)?.num;
+  SORT = SORT.key === k ? { key: k, dir: -SORT.dir } : { key: k, dir: giamTruoc ? -1 : 1 };
   renderCreators();
 });
 
-$('#p-more').addEventListener('click', (e) => {
-  if (e.target.closest('#btn-pmore')) { PSHOW_ALL = true; renderProducts(); }
-  if (e.target.closest('#btn-pless')) { PSHOW_ALL = false; renderProducts();
-    $('#t-products').scrollIntoView({ block: 'nearest' }); }
-});
+$('#p-shop').addEventListener('input', (e) => { PSHOP = e.target.value.trim(); renderProducts(); });
 
 $('#btn-export-p').addEventListener('click', exportProductsCsv);
-$('#p-q').addEventListener('input', () => { PSHOW_ALL = false; renderProducts(); });
+$('#p-q').addEventListener('input', renderProducts);
 
 $('#p-view').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#p-view').children) x.setAttribute('aria-pressed', String(x === b));
   PVIEW = b.dataset.view;
-  PSHOW_ALL = false;
   renderProducts();
 });
 
@@ -1021,7 +1170,15 @@ document.addEventListener('keydown', (e) => {
     .map(m => `<option value="${esc(m.key)}"${m.key === 'gmv' ? ' selected' : ''}>${esc(m.label)}</option>`).join(''));
   renderWiki();
   showLoading();
-  await Promise.all([loadCreators(), loadSystem(), loadProducts()]);
+  await Promise.all([loadCreators(), loadSystem(), loadProducts(), loadCoverage()]);
   await loadSummary();   // can CREATORS truoc de KPI dem dung so creator trong ky
-  } catch (e) { reportError('init', e); }
+  } catch (e) {
+    // Khung xuong aria-busy nam lai vinh vien neu khong co duong nay: nguoi dung cho mai
+    // mot thu khong bao gio toi. Noi thang la hong.
+    for (const id of ['#kpis', '#kpis-phu', '#t-daily', '#t-creators', '#t-products']) {
+      const el = $(id); if (el) el.innerHTML = '';
+    }
+    $('#chart').innerHTML = '<p class="empty">Không tải được dữ liệu.</p>';
+    reportError('init', e);
+  }
 })();
