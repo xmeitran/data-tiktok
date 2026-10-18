@@ -87,15 +87,16 @@ function totals(days) {
   return t;
 }
 
-// Nhan ngan cho tieu de bang. Nhan day du trong registry ("Creator xuat hien trong du lieu")
+// Nhan ngan cho tieu de bang. Nhan day du trong registry
 // lam bang phinh ra phai cuon ngang; ten day du van con o tooltip va tab Metric.
 const SHORT = {
-  creators_seen: 'Creator', creators_active: 'Creator có đơn', gmv: 'GMV gộp', net_gmv: 'GMV thực',
-  orders: 'Đơn hợp lệ', orders_all: 'Affiliate orders', items_sold: 'SP bán (gộp)',
-  items_sold_net: 'SP bán thực', refunded_items: 'SP hoàn', aov: 'AOV gross',
-  est_commission: 'Hoa hồng (gộp)', est_commission_net: 'Hoa hồng sau hoàn',
-  commission_base: 'Gốc HH (gộp)', commission_base_net: 'Gốc HH sau hoàn', commission_rate: '% hoa hồng',
-  refund_amount: 'Hoàn/huỷ', refund_orders: 'Đơn huỷ', refund_rate: '% hoàn (tiền)',
+  creators_seen: 'Creator có dữ liệu', creators_active: 'Creator có đơn hợp lệ',
+  gmv: 'GMV gộp', net_gmv: 'GMV ròng (ước tính)',
+  orders: 'Đơn hợp lệ', orders_all: 'Đơn gộp', items_sold: 'SP bán (gộp)',
+  items_sold_net: 'SP sau hoàn/hủy (ước tính)', refunded_items: 'SP dòng hoàn/hủy', aov: 'AOV gộp',
+  est_commission: 'HH ước tính (gộp)', est_commission_net: 'HH ước tính sau hoàn/hủy',
+  commission_base: 'Cơ sở HH (gộp)', commission_base_net: 'Cơ sở HH sau hoàn/hủy', commission_rate: '% HH ước tính',
+  refund_amount: 'Giá trị hoàn/hủy', refund_orders: 'Đơn hoàn/hủy toàn bộ', refund_rate: '% hoàn/hủy (giá trị)',
 };
 const shortLabel = (k, m) => SHORT[k] ?? m?.label ?? k;
 const byKey = () => Object.fromEntries(METRICS.map(m => [m.key, m]));
@@ -307,22 +308,22 @@ const CCOLS = [
   // vung giua bang so le va mat khong bam duoc vao dau de quet.
   { key: 'alerts',          label: 'Cảnh báo',     num: false },
   { key: 'days',            label: 'Số ngày',      num: true },
-  { key: 'gmv',             label: 'GMV',          num: true , delta: true },
-  { key: 'net_gmv',         label: 'GMV thực',     num: true , delta: true },
-  { key: 'refund_amount',   label: 'Hoàn/huỷ',     num: true },
-  { key: 'refund_orders',   label: 'Đơn huỷ',      num: true },
-  { key: 'refund_rate',     label: '% hoàn (tiền)', num: true, unit: '%' },
+  { key: 'gmv',             label: 'GMV gộp',      num: true , delta: true },
+  { key: 'net_gmv',         label: 'GMV ròng (ước tính)', num: true , delta: true },
+  { key: 'refund_amount',   label: 'Giá trị hoàn/hủy', num: true },
+  { key: 'refund_orders',   label: 'Đơn hoàn/hủy toàn bộ', num: true },
+  { key: 'refund_rate',     label: '% hoàn/hủy (giá trị)', num: true, unit: '%' },
   { key: 'orders',          label: 'Đơn hợp lệ',   num: true , delta: true },
-  { key: 'orders_all',      label: 'Affiliate orders', num: true, delta: true },
+  { key: 'orders_all',      label: 'Đơn gộp',       num: true, delta: true },
   { key: 'items_sold',      label: 'SP bán gộp',   num: true },
-  { key: 'items_sold_net',  label: 'SP bán thực',  num: true },
-  { key: 'refunded_items',  label: 'SP hoàn',      num: true },
-  { key: 'aov',             label: 'AOV gross',     num: true },
-  { key: 'commission_base', label: 'Gốc HH gộp',   num: true },
-  { key: 'commission_base_net', label: 'Gốc HH sau hoàn', num: true },
-  { key: 'est_commission',  label: 'Hoa hồng gộp', num: true , delta: true },
-  { key: 'est_commission_net', label: 'Hoa hồng sau hoàn', num: true },
-  { key: 'commission_rate', label: '% hoa hồng',   num: true, unit: '%' },
+  { key: 'items_sold_net',  label: 'SP sau hoàn/hủy (ước tính)', num: true },
+  { key: 'refunded_items',  label: 'SP dòng hoàn/hủy', num: true },
+  { key: 'aov',             label: 'AOV gộp',       num: true },
+  { key: 'commission_base', label: 'Cơ sở HH gộp', num: true },
+  { key: 'commission_base_net', label: 'Cơ sở HH sau hoàn/hủy', num: true },
+  { key: 'est_commission',  label: 'HH ước tính gộp', num: true , delta: true },
+  { key: 'est_commission_net', label: 'HH ước tính sau hoàn/hủy', num: true },
+  { key: 'commission_rate', label: '% HH ước tính', num: true, unit: '%' },
   { key: 'first_seen',      label: 'Thấy đầu',     num: false },
   { key: 'last_seen',       label: 'Thấy cuối',    num: false },
 ];
@@ -466,9 +467,10 @@ function exportCsv() {
 
 // ---------- San pham / Shop ----------
 // Doc tu /api/products, tuc tu bang THO sku_orders. Khac KPI tab Tong quan: o day don huy
-// da bi loai ngay trong SQL (VALID_ROW), nen con so cong lai bang dung net_gmv chu khong
-// phai gmv gop. Vi vay cot phai goi la 'GMV thuc' -- giong nhan o bang Creator. Goi no la
-// 'GMV' nhu truoc thi hai tab hien hai so khac nhau duoi cung mot ten.
+// da bi loai ngay trong SQL (VALID_ROW), nen con so cong lai la view GMV sau hoan/huy
+// (gan voi net_gmv, nhung van la uoc tinh vi API khong co returned_quantity day du).
+// Dung cung nhan 'GMV rong (uoc tinh)' de hai tab khong hien hai so khac nhau duoi cung
+// mot ten.
 let PRODUCTS = { products: [], shops: [], byContentType: [], coverage: null };
 let PVIEW = 'products';
 // Loc thay cho limit: bang tra ve HET, nguoi dung thu hep bang bo loc chu khong bi
@@ -479,20 +481,20 @@ let PSORT = { products: { key: 'gmv', dir: -1 }, shops: { key: 'gmv', dir: -1 } 
 const PCOLS = [
   { key: 'product_name',    label: 'Sản phẩm',      wide: true },
   { key: 'shop_name',       label: 'Shop' },
-  { key: 'gmv',             label: 'GMV thực',      num: true },
-  { key: 'orders',          label: 'Đơn',           num: true },
-  { key: 'items',           label: 'SL bán',        num: true },
-  { key: 'creators',        label: 'Creator',       num: true },
-  { key: 'avg_rate',        label: '% hoa hồng',    num: true, unit: '%' },
-  { key: 'est_commission',  label: 'Hoa hồng',      num: true },
+  { key: 'gmv',             label: 'GMV ròng (ước tính)', num: true },
+  { key: 'orders',          label: 'Đơn hợp lệ',    num: true },
+  { key: 'items',           label: 'SP hợp lệ',     num: true },
+  { key: 'creators',        label: 'Số creator',    num: true },
+  { key: 'avg_rate',        label: '% HH chuẩn bình quân', num: true, unit: '%' },
+  { key: 'est_commission',  label: 'HH ước tính',   num: true },
 ];
 const SCOLS = [
   { key: 'shop_name',       label: 'Shop',          wide: true },
-  { key: 'gmv',             label: 'GMV thực',      num: true },
-  { key: 'orders',          label: 'Đơn',           num: true },
+  { key: 'gmv',             label: 'GMV ròng (ước tính)', num: true },
+  { key: 'orders',          label: 'Đơn hợp lệ',    num: true },
   { key: 'products',        label: 'Sản phẩm',      num: true },
-  { key: 'creators',        label: 'Creator',       num: true },
-  { key: 'est_commission',  label: 'Hoa hồng',      num: true },
+  { key: 'creators',        label: 'Số creator',    num: true },
+  { key: 'est_commission',  label: 'HH ước tính',   num: true },
 ];
 // Giong bang creator: ty le khong cong duoc nen dong tong de trong.
 const PSUMMABLE = new Set(['gmv', 'orders', 'items', 'est_commission']);

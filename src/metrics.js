@@ -90,7 +90,7 @@ export const METRICS = [
   {
     key: 'gmv',
     fields: ['price.amount', 'quantity'],
-    label: 'GMV affiliate',
+    label: 'GMV gộp',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -116,7 +116,7 @@ export const METRICS = [
   {
     key: 'orders_all',
     fields: ['id'],
-    label: 'Affiliate Orders (gross)',
+    label: 'Tổng số đơn (gộp)',
     group: 'Doanh thu',
     unit: 'đơn',
     level: 'creator',
@@ -129,7 +129,7 @@ export const METRICS = [
   {
     key: 'items_sold',
     fields: ['quantity', 'settle_status', 'fully_return'],
-    label: 'Số sản phẩm bán',
+    label: 'Số lượng sản phẩm (gộp)',
     group: 'Doanh thu',
     unit: 'sản phẩm',
     level: 'creator',
@@ -142,7 +142,7 @@ export const METRICS = [
   {
     key: 'items_sold_net',
     fields: ['quantity', 'settle_status', 'fully_return'],
-    label: 'Sản phẩm bán thực (sau hoàn)',
+    label: 'Số lượng sản phẩm sau hoàn/hủy (ước tính)',
     group: 'Doanh thu',
     unit: 'sản phẩm',
     level: 'creator',
@@ -155,7 +155,7 @@ export const METRICS = [
   {
     key: 'refunded_items',
     fields: ['quantity', 'settle_status', 'fully_return'],
-    label: 'Sản phẩm hoàn/hủy',
+    label: 'Số lượng sản phẩm trên dòng hoàn/hủy',
     group: 'Chất lượng',
     unit: 'sản phẩm',
     level: 'creator',
@@ -168,7 +168,7 @@ export const METRICS = [
   {
     key: 'est_commission',
     fields: ['estimated_standard_commission', 'estimated_bonus_commission', 'estimated_shop_ads_commission', 'estimated_tap_bonus_commission'],
-    label: 'Hoa hồng ước tính',
+    label: 'Hoa hồng ước tính (gộp)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -181,7 +181,7 @@ export const METRICS = [
   {
     key: 'est_commission_net',
     fields: ['estimated_standard_commission', 'estimated_bonus_commission', 'estimated_shop_ads_commission', 'estimated_tap_bonus_commission', 'settle_status', 'fully_return'],
-    label: 'Hoa hồng ước tính sau hoàn',
+    label: 'Hoa hồng ước tính sau hoàn/hủy',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -194,7 +194,7 @@ export const METRICS = [
   {
     key: 'aov',
     fields: [],
-    label: 'Giá trị đơn trung bình (AOV)',
+    label: 'Giá trị đơn trung bình (gộp)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -207,7 +207,7 @@ export const METRICS = [
   {
     key: 'commission_rate',
     fields: [],
-    label: 'Tỷ lệ hoa hồng bình quân',
+    label: 'Tỷ lệ hoa hồng ước tính trên cơ sở tính hoa hồng',
     group: 'Doanh thu',
     unit: '%',
     level: 'creator',
@@ -220,11 +220,11 @@ export const METRICS = [
   {
     key: 'refund_amount',
     fields: ['price.amount', 'quantity', 'settle_status', 'fully_return'],
-    label: 'Giá trị hoàn/huỷ',
+    label: 'Giá trị dòng hoàn/hủy',
     group: 'Chất lượng',
     unit: 'VND',
     level: 'creator',
-    definition: 'Tổng giá trị các đơn bị huỷ hoặc hoàn trong kỳ.',
+    definition: 'Tổng giá trị các dòng SKU bị đánh dấu hoàn/hủy trong kỳ.',
     formula: "SUM(price.amount × quantity) WHERE fully_return='Yes' OR settle_status='INELIGIBLE'",
     source: 'POST /affiliate_partner/202603/cap_order/search → fully_return = Yes, hoặc settle_status = INELIGIBLE (đã trả/hoàn/huỷ, không có hoa hồng).',
     pitfalls: 'Chỉ bắt được hoàn TOÀN PHẦN — cap_order không có số lượng trả theo SKU. Đơn hoàn thường thuộc kỳ trước, nên phải chạy lại sync cho các ngày cũ (sync theo ngày cho phép backfill).',
@@ -233,7 +233,7 @@ export const METRICS = [
   {
     key: 'refund_orders',
     fields: ['id', 'settle_status'],
-    label: 'Số đơn huỷ/hoàn',
+    label: 'Số đơn hoàn/hủy toàn bộ',
     group: 'Chất lượng',
     unit: 'đơn',
     level: 'creator',
@@ -246,7 +246,7 @@ export const METRICS = [
   {
     key: 'refund_rate',
     fields: [],
-    label: 'Tỷ lệ hoàn/huỷ (theo giá trị)',
+    label: 'Tỷ lệ giá trị hoàn/hủy',
     group: 'Chất lượng',
     unit: '%',
     level: 'creator',
@@ -259,11 +259,11 @@ export const METRICS = [
   {
     key: 'net_gmv',
     fields: [],
-    label: 'GMV thực',
+    label: 'GMV ròng (ước tính)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
-    definition: 'GMV sau khi trừ giá trị hoàn/huỷ. Đây mới là con số dùng để đánh giá creator.',
+    definition: 'GMV sau khi trừ giá trị các dòng hoàn/hủy — đây là view GMV ròng ước tính, không phải số settlement net chính thức.',
     formula: 'gmv - refund_amount',
     source: 'Dẫn xuất',
     pitfalls: 'Chỉ ổn khi cửa sổ hoàn đã đóng (~15–30 ngày). Đọc số này ở kỳ vừa kết thúc sẽ thiếu hụt.',
@@ -272,7 +272,7 @@ export const METRICS = [
   {
     key: 'commission_base',
     fields: ['estimated_commission_base'],
-    label: 'Gốc tính hoa hồng',
+    label: 'Cơ sở tính hoa hồng ước tính (gộp)',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -285,7 +285,7 @@ export const METRICS = [
   {
     key: 'commission_base_net',
     fields: ['estimated_commission_base', 'settle_status', 'fully_return'],
-    label: 'Gốc hoa hồng sau hoàn',
+    label: 'Cơ sở tính hoa hồng sau hoàn/hủy',
     group: 'Doanh thu',
     unit: 'VND',
     level: 'creator',
@@ -298,7 +298,7 @@ export const METRICS = [
   {
     key: 'creators_seen',
     fields: ['creator_username'],
-    label: 'Creator xuất hiện trong dữ liệu',
+    label: 'Creator có dữ liệu đơn',
     group: 'Uỷ quyền',
     unit: 'creator',
     level: 'hệ thống',
@@ -337,7 +337,7 @@ export const METRICS = [
   {
     key: 'videos_with_orders',
     fields: ['content_type', 'content_id', 'settle_status', 'fully_return'],
-    label: 'Video có đơn',
+    label: 'Video phát sinh đơn hợp lệ',
     group: 'Nội dung',
     unit: 'video',
     level: 'creator',
@@ -350,7 +350,7 @@ export const METRICS = [
   {
     key: 'lives_with_orders',
     fields: ['content_type', 'content_id', 'settle_status', 'fully_return'],
-    label: 'Phiên live có đơn',
+    label: 'Phiên LIVE phát sinh đơn hợp lệ',
     group: 'Nội dung',
     unit: 'phiên',
     level: 'creator',
