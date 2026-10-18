@@ -1,7 +1,7 @@
 import { periods } from './period.js';
-import { csvCell } from './csv.js';
 import { summarize, alertsFor, worst, change, RULES } from './alerts.js';
 import { classify, eta } from './coverage.js';
+import { downloadExcel } from './excel.js';
 
 // Mot loi JS khong duoc bat = trang trang, khong manh moi nao. Bat o day de:
 // (1) hien thang len trang, (2) gui ve server cho vao log.
@@ -736,16 +736,14 @@ function renderCreators() {
 
 // CSV luon xuat DU 16 cot va DU dong: che do "Gon" va gioi han 30 dong la de DOC
 // tren man hinh, khong phai de cat bot du lieu mang di.
-function exportCsv() {
+function exportExcel() {
   const rows = creatorRows();
-  const head = CCOLS.map(c => c.label).join(',');
-  // Cot canh bao la mang object -> phai doi sang chu truoc khi vao CSV.
-  const oCsv = (r, c) => c.key === 'alerts' ? r.alerts.map(a => a.text).join('; ') : r[c.key];
-  const body = rows.map(r => CCOLS.map(c => csvCell(oCsv(r, c))).join(',')).join('\n');
-  const url = URL.createObjectURL(new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = `creators-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+  const columns = CCOLS.map(c => ({ ...c, num: c.num && c.key !== 'alerts' }));
+  downloadExcel({
+    sheetName: 'Creators',
+    columns,
+    rows: rows.map(r => ({ ...r, alerts: r.alerts.map(a => a.text).join('; ') })),
+  }, `creators-${new Date().toISOString().slice(0, 10)}.xls`);
 }
 
 // ---------- San pham / Shop ----------
@@ -901,15 +899,14 @@ async function loadProducts() {
   renderProducts();
 }
 
-function exportProductsCsv() {
+function exportProductsExcel() {
   const cols = pcols();
   const rows = productRows();
-  const head = cols.map(c => c.label).join(',');
-  const body = rows.map(r => cols.map(c => csvCell(r[c.key])).join(',')).join('\n');
-  const url = URL.createObjectURL(new Blob(['\ufeff' + head + '\n' + body], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = `${PVIEW}-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+  downloadExcel({
+    sheetName: PVIEW === 'products' ? 'Products' : 'Shops',
+    columns: cols,
+    rows,
+  }, `${PVIEW}-${new Date().toISOString().slice(0, 10)}.xls`);
 }
 
 // ---------- Theo ngay ----------
@@ -1486,7 +1483,7 @@ async function syncCreatorData(button) {
 $('#btn-sync-creator').addEventListener('click', (e) => syncCreatorData(e.currentTarget));
 $('#btn-sync-creator-data').addEventListener('click', (e) => syncCreatorData(e.currentTarget));
 
-$('#btn-export').addEventListener('click', exportCsv);
+$('#btn-export').addEventListener('click', exportExcel);
 $('#c-metric').addEventListener('change', renderChart);
 $('#c-group').addEventListener('change', renderChart);
 $('#creator-data-q').addEventListener('input', renderCreatorData);
@@ -1539,7 +1536,7 @@ $('#t-creators').addEventListener('click', (e) => {
 
 $('#p-shop').addEventListener('input', (e) => { PSHOP = e.target.value.trim(); renderProducts(); });
 
-$('#btn-export-p').addEventListener('click', exportProductsCsv);
+$('#btn-export-p').addEventListener('click', exportProductsExcel);
 $('#p-q').addEventListener('input', renderProducts);
 
 $('#p-view').addEventListener('click', (e) => {

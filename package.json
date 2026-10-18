@@ -9,7 +9,7 @@
     "sync": "node -e \"import('./src/sync.js').then(m=>m.runSync({days:Number(process.argv[1])||7})).then(r=>console.log(r))\" --",
     "dump": "node dump-orders.mjs",
     "rebuild:metrics": "node rebuild-metrics.mjs",
-    "test": "npm run check:js && node test-aggregate.mjs && node test-metrics.mjs && node test-period.mjs && node test-alerts.mjs && node test-csv.mjs && node test-auth.mjs && node test-creator.mjs && node test-retry.mjs && node test-runs.mjs && node test-order-day.mjs && node test-anchor.mjs && node test-upsert.mjs && node test-callback-state.mjs && node test-coverage.mjs",
+    "test": "npm run check:js && node test-aggregate.mjs && node test-metrics.mjs && node test-period.mjs && node test-alerts.mjs && node test-csv.mjs && node test-excel.mjs && node test-auth.mjs && node test-creator.mjs && node test-retry.mjs && node test-runs.mjs && node test-order-day.mjs && node test-anchor.mjs && node test-upsert.mjs && node test-callback-state.mjs && node test-coverage.mjs",
     "test:docs": "node test-docs.mjs",
     "check:js": "cp public/app.js /tmp/_app_check.mjs && node --check /tmp/_app_check.mjs && echo \"app.js OK (module/strict)\"",
     "test:live": "node test-live.mjs",
